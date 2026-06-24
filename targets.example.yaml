@@ -1,0 +1,13 @@
+targets:
+  # Root domains — subfinder will enumerate subdomains
+  domains:
+    - example.com
+
+  # Pre-enumerated subdomains (skips subfinder)
+  subdomains:
+    # - sub.example.com
+
+  # Internal CIDR ranges (expands to individual IPs + reverse DNS)
+  cidrs:
+    # - 10.0.0.0/24
+    # - 172.16.100.0/24
