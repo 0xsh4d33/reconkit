@@ -71,7 +71,7 @@ nmap:
 eyewitness:
   enabled: true
   path: /path/to/EyeWitness
-  python: eyewitness-venv/bin/python
+  python: /path/to/EyeWitness/eyewitness-venv/bin/python  # must be full absolute path
 ```
 
 ## Tool Requirements
@@ -95,7 +95,7 @@ CIDRs → expand → reverse DNS
            ↓
    nmap (per-IP, worker pool)
            ↓
-   httpx (batch, all assets)
+   httpx (batch, non-IP assets + IPs with open ports)
            ↓
    eyewitness (batch, web services)
            ↓
