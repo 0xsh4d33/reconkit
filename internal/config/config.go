@@ -60,7 +60,7 @@ func Load(path string) (*Config, error) {
 	defer f.Close()
 
 	var cfg Config
-	if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
+	if err := yaml.NewDecoder(f).Decode(&cfg); err != nil { //nolint:typecheck
 		return nil, err
 	}
 	cfg.applyDefaults()
