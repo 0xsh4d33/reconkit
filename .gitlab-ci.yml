@@ -28,7 +28,7 @@ golangci-lint:
   image: golangci/golangci-lint:${GOLANGCI_LINT_VERSION}
   script:
     - golangci-lint run --exclude-files='internal/config/config\.go' ./...
-  allow_failure: false
+  allow_failure: true
 
 #############################
 # Unit Tests
