@@ -185,8 +185,6 @@ type httpxEntry struct {
 	HostIP       string   `json:"host_ip"`
 	A            []string `json:"a"`
 	Scheme       string   `json:"scheme"`
-	FinalURL     string   `json:"final_url"`
-	FinalURLV2   string   `json:"final-url"`
 	FaviconHash  string   `json:"favicon_hash"`
 	FaviconHashV2 string  `json:"favicon-hash"`
 	Tech         []string `json:"tech"`
@@ -207,10 +205,6 @@ func parseLine(line string) (*models.WebService, string, error) {
 	status := e.StatusCode
 	if status == 0 {
 		status = e.StatusCodeV2
-	}
-	finalURL := e.FinalURL
-	if finalURL == "" {
-		finalURL = e.FinalURLV2
 	}
 	faviconHash := e.FaviconHash
 	if faviconHash == "" {
