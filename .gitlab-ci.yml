@@ -1,6 +1,6 @@
 variables:
   GO_VERSION: "1.23"
-  GOLANGCI_LINT_VERSION: "v1.60.3"
+  GOLANGCI_LINT_VERSION: "v1.64.8"
   SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
   GIT_DEPTH: "0"
   GOPROXY: direct
@@ -29,7 +29,7 @@ golangci-lint:
   image: golangci/golangci-lint:${GOLANGCI_LINT_VERSION}
   script:
     - golangci-lint run --exclude-files='internal/config/config\.go' ./...
-  allow_failure: true
+  allow_failure: false
 
 #############################
 # Unit Tests
