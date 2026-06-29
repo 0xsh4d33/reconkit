@@ -27,8 +27,8 @@ stages:
 golangci-lint:
   stage: verify
   image: golangci/golangci-lint:${GOLANGCI_LINT_VERSION}
-#  before_script:
-#    - go mod download
+  before_script:
+    - go mod download
   script:
     - golangci-lint run ./...
   allow_failure: false
