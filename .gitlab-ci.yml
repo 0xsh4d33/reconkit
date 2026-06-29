@@ -91,8 +91,8 @@ sonarqube:
       -Dsonar.projectKey=${CI_PROJECT_NAME}
       -Dsonar.projectName=${CI_PROJECT_NAME}
       -Dsonar.sources=.
-      -Dsonar.host.url=${SONAR_HOST_URL}
-      -Dsonar.login=${SONAR_TOKEN}
+ #     -Dsonar.host.url=${SONAR_HOST_URL}
+#      -Dsonar.login=${SONAR_TOKEN}
       -Dsonar.go.coverage.reportPaths=coverage.out
       -Dsonar.externalIssuesReportPaths=gosec-report.json
       -Dsonar.scm.provider=git
