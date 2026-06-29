@@ -57,7 +57,8 @@ gosec:
   before_script:
     - go install github.com/securego/gosec/v2/cmd/gosec@latest
   script:
-    -touch gosec-report.json && gosec -fmt=sonarqube -out=gosec-report.json ./...
+    - touch gosec-report.json
+    - gosec -fmt=sonarqube -out=gosec-report.json ./...
 
   artifacts:
     when: always
