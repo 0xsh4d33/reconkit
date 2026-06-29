@@ -53,7 +53,7 @@ type PathsConfig struct {
 }
 
 func Load(path string) (*Config, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is a CLI argument, expected for a CLI tool
 	if err != nil {
 		return nil, err
 	}

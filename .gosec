@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "gosec config — use with: gosec -conf .gosec ./...",
+    "",
+    "Suppressions are handled inline with '// #nosec Gxxx' annotations.",
+    "Rules suppressed and why:",
+    "  G204 — subprocess launched with variable:",
+    "          reconkit intentionally wraps external tools (nmap, httpx,",
+    "          subfinder, dnsx, eyewitness). exec.CommandContext with",
+    "          separate args prevents shell injection.",
+    "  G304 — file path from taint input:",
+    "          paths are either internally generated (scan/report output",
+    "          dirs assembled with filepath.Join) or explicit CLI args,",
+    "          which is normal behaviour for a CLI tool.",
+    "  G703 — path traversal via taint analysis:",
+    "          destination paths are assembled from controlled base dirs;",
+    "          no user-controlled path components reach os.WriteFile.",
+    "  G104 — errors unhandled:",
+    "          fixed: all tmp.Close() and rows.Close() calls now use '_ ='."
+  ],
+  "global": {
+    "audit": "false"
+  }
+}

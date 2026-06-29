@@ -77,7 +77,7 @@ func (r *JSONReporter) Generate(scanID int64) error {
 	}
 	outPath := filepath.Join(outDir, fmt.Sprintf("scan_%d.json", scanID))
 
-	f, err := os.Create(outPath)
+	f, err := os.Create(outPath) // #nosec G304 -- outPath is assembled from controlled report output dir
 	if err != nil {
 		return err
 	}

@@ -422,7 +422,7 @@ func (s *Store) Diff(scanID1, scanID2 int64) (*DiffResult, error) {
 		return nil, fmt.Errorf("new assets: %w", err)
 	}
 	diff.NewAssets, err = scanAssets(rows)
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +439,7 @@ func (s *Store) Diff(scanID1, scanID2 int64) (*DiffResult, error) {
 		return nil, fmt.Errorf("disappeared assets: %w", err)
 	}
 	diff.DisappearedAssets, err = scanAssets(rows)
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return nil, err
 	}

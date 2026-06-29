@@ -177,11 +177,11 @@ func copyFileReport(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
+	data, err := os.ReadFile(src) // #nosec G304 -- src is internally generated from report output dir
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o600)
+	return os.WriteFile(dst, data, 0o600) // #nosec G703 -- dst is assembled from controlled base path
 }
 
 func renderTemplate(tplStr, path string, data any) error {
@@ -191,7 +191,7 @@ func renderTemplate(tplStr, path string, data any) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(path) // #nosec G304 -- path is assembled from controlled report output dir
 	if err != nil {
 		return err
 	}

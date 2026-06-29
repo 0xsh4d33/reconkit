@@ -69,7 +69,7 @@ func (s *Scanner) scanAsset(ctx context.Context, scanID int64, asset models.Asse
 	args = append(args, asset.IP, "-oX", outBase+".xml", "-oN", outBase+".nmap")
 
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "nmap", args...)
+	cmd := exec.CommandContext(ctx, "nmap", args...) // #nosec G204 -- intentional: nmap is the tool this scanner wraps, exec.CommandContext avoids shell injection
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
@@ -142,7 +142,7 @@ type nmapService struct {
 }
 
 func parseXML(path string) ([]models.Port, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is internally generated from scan output dir
 	if err != nil {
 		return nil, err
 	}

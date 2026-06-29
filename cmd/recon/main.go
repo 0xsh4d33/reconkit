@@ -305,7 +305,7 @@ func mustOpenDB(path string) *database.DB {
 }
 
 func mustLoadTargets(path string) *targetsFile {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a CLI argument, expected for a CLI tool
 	if err != nil {
 		log.Fatalf("read targets %q: %v", path, err)
 	}
@@ -332,7 +332,7 @@ func parseListFlag(s string) []string {
 }
 
 func mustReadLines(path string) []string {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is a CLI argument, expected for a CLI tool
 	if err != nil {
 		log.Fatalf("open file %q: %v", path, err)
 	}

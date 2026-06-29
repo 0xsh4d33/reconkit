@@ -68,7 +68,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		fmt.Fprintln(tmp, ws.URL)
 		urlToService[ws.URL] = &services[i]
 	}
-	tmp.Close()
+	_ = tmp.Close()
 
 	ts := time.Now().Format("20060102_150405")
 	outDir, err := filepath.Abs(filepath.Join(s.cfg.Paths.ScanResults, "eyewitness", fmt.Sprintf("ew_%s_%d", ts, scanID)))
@@ -85,7 +85,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	log.Printf("[eyewitness] cmd: %s %s --web -f %s -d %s --no-prompt", pythonBin, entrypoint, tmp.Name(), outDir)
 
 	var stderr, stdout bytes.Buffer
-	cmd := exec.CommandContext(ctx, pythonBin, entrypoint,
+	cmd := exec.CommandContext(ctx, pythonBin, entrypoint, // #nosec G204 -- intentional: eyewitness binary/entrypoint from operator config, exec.CommandContext avoids shell injection
 		"--web",
 		"-f", tmp.Name(),
 		"-d", outDir,
@@ -174,9 +174,9 @@ func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
+	data, err := os.ReadFile(src) // #nosec G304 -- src is internally generated from scan output dir
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o600) //#nosec G306 G703
+	return os.WriteFile(dst, data, 0o600) // #nosec G306 G703 -- dst is assembled from controlled base path
 }

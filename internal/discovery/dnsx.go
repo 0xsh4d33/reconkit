@@ -40,7 +40,7 @@ func (d *DNSxResolver) Resolve(ctx context.Context, assets []models.Asset) ([]mo
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, d.binary, "-a", "-json", "-silent")
+	cmd := exec.CommandContext(ctx, d.binary, "-a", "-json", "-silent") // #nosec G204 -- intentional: dnsx binary from operator config, exec.CommandContext avoids shell injection
 	cmd.Stdin = strings.NewReader(input.String())
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -60,7 +60,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		seen[target] = true
 		fmt.Fprintln(tmp, target)
 	}
-	tmp.Close()
+	_ = tmp.Close()
 
 	// Build output paths
 	ts := time.Now().Format("20060102_150405")
@@ -95,7 +95,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	log.Printf("[httpx] probing %d targets", len(seen))
 
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "httpx", args...)
+	cmd := exec.CommandContext(ctx, "httpx", args...) // #nosec G204 -- intentional: httpx is the tool this scanner wraps, exec.CommandContext avoids shell injection
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

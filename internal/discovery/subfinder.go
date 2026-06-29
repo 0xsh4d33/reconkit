@@ -23,7 +23,7 @@ func (s *SubfinderDiscoverer) Name() string { return "subfinder" }
 
 func (s *SubfinderDiscoverer) Discover(ctx context.Context, target string) ([]models.Asset, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, s.binary, "-d", target, "-silent")
+	cmd := exec.CommandContext(ctx, s.binary, "-d", target, "-silent") // #nosec G204 -- intentional: subfinder binary from operator config, exec.CommandContext avoids shell injection
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 

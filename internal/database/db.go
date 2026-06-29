@@ -31,7 +31,7 @@ func Open(path string) (*DB, error) {
 
 	db := &DB{conn}
 	if err := db.migrate(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return db, nil
