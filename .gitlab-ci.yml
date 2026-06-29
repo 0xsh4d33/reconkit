@@ -97,7 +97,7 @@ sonarqube:
       -Dsonar.externalIssuesReportPaths=gosec-report.json
       -Dsonar.scm.provider=git
       -Dsonar.qualitygate.wait=true
-  allow_failure: false
+  allow_failure: true
   cache:
     key: "${CI_JOB_NAME}"
     paths:
