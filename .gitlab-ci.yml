@@ -3,7 +3,7 @@ variables:
   GOLANGCI_LINT_VERSION: "v1.64.8"
   SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
   GIT_DEPTH: "0"
-  GOPROXY: direct
+#  GOPROXY: direct
 
 cache:
   paths:
