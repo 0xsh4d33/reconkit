@@ -87,8 +87,6 @@ sonarqube:
     - unit-test
     - gosec
   script:
-    - echo "$KOSHER_CERT" > /usr/local/share/ca-certificates/ca-piv.crt
-    - update-ca-certificates
     - sonar-scanner
       -Dsonar.projectKey=${CI_PROJECT_NAME}
       -Dsonar.projectName=${CI_PROJECT_NAME}
