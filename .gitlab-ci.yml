@@ -74,7 +74,7 @@ sonarqube:
   stage: sonar
   image:
 #    name: sonarsource/sonar-scanner-cli:latest
-    name: nexus.pivdenny.ua:5000/docker/sonar-scanner-cli:latest
+    name: nexus.pivdenny.ua:5000/sonarsource/sonar-scanner-cli:11.5
     entrypoint: [""]
   variables:
     SONAR_TOKEN: "$SONAR_LOGIN"  # TOKEN генерируется при создании проекта в sonarqube
