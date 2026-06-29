@@ -22,6 +22,5 @@ results_eyewitness/
 config.yaml
 targets.yaml
 *.log
-recon
 reconkit
 .claude/

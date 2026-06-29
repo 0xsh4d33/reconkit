@@ -60,7 +60,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 func (s *Scanner) scanAsset(ctx context.Context, scanID int64, asset models.Asset) error {
 	ts := time.Now().Format("20060102_150405")
 	outDir := filepath.Join(s.cfg.Paths.ScanResults, "nmap")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return err
 	}
 	outBase := filepath.Join(outDir, fmt.Sprintf("%s_%s_%d", asset.IP, ts, asset.ID))

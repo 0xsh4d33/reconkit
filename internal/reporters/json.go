@@ -72,7 +72,7 @@ func (r *JSONReporter) Generate(scanID int64) error {
 	}
 
 	outDir := filepath.Join(r.outputDir, "json")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return err
 	}
 	outPath := filepath.Join(outDir, fmt.Sprintf("scan_%d.json", scanID))

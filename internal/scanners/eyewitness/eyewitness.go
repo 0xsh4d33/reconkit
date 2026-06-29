@@ -76,7 +76,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		return fmt.Errorf("eyewitness: abs path: %w", err)
 	}
 	// Only create parent — EyeWitness requires outDir to not exist yet (it creates it itself)
-	if err := os.MkdirAll(filepath.Dir(outDir), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outDir), 0o750); err != nil {
 		return err
 	}
 
@@ -171,12 +171,12 @@ func (s *Scanner) findAssetIDForHostname(hostname string, services []models.WebS
 }
 
 func copyFile(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o644)
+	return os.WriteFile(dst, data, 0o600) //#nosec G306 G703
 }

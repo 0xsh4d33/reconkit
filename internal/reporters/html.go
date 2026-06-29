@@ -68,7 +68,7 @@ func (r *HTMLReporter) Generate(scanID int64) error {
 
 	dir := filepath.Join(r.outputDir, "html", fmt.Sprintf("scan_%d", scanID))
 	assetsDir := filepath.Join(dir, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+	if err := os.MkdirAll(assetsDir, 0o750); err != nil {
 		return err
 	}
 
@@ -174,14 +174,14 @@ func (r *HTMLReporter) Generate(scanID int64) error {
 }
 
 func copyFileReport(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o644)
+	return os.WriteFile(dst, data, 0o600)
 }
 
 func renderTemplate(tplStr, path string, data any) error {

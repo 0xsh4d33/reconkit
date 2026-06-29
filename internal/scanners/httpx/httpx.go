@@ -65,7 +65,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	// Build output paths
 	ts := time.Now().Format("20060102_150405")
 	outDir := filepath.Join(s.cfg.Paths.ScanResults, "httpx")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return err
 	}
 	jsonOut := filepath.Join(outDir, fmt.Sprintf("httpx_%s_%d.json", ts, scanID))
@@ -106,7 +106,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	}
 
 	// Write JSON output file
-	if err := os.WriteFile(jsonOut, stdout.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(jsonOut, stdout.Bytes(), 0o600); err != nil {
 		log.Printf("[httpx] write output: %v", err)
 	}
 
