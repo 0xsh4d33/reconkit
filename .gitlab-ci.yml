@@ -122,7 +122,7 @@ build:
   image: golang:${GO_VERSION}
   script:
     - mkdir -p build
-    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/app .
+    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/app ./cmd/recon/
   artifacts:
     paths:
       - build/app
