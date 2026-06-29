@@ -22,6 +22,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultConfigPath    = "config.yaml"
+	defaultConfigPathMsg = "path to config.yaml"
+)
+
 const usage = `Usage: recon <command> [flags]
 
 Commands:
@@ -71,7 +76,7 @@ type targetsFile struct {
 
 func cmdScan(args []string) {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
-	cfgPath := fs.String("config", "config.yaml", "path to config.yaml")
+	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
 	targetsPath := fs.String("targets", "", "path to targets.yaml")
 	domainsFlag := fs.String("domains", "", "comma-separated domains (or @file.txt)")
 	subdomainsFlag := fs.String("subdomains", "", "pre-enumerated subdomains file")
@@ -140,7 +145,7 @@ func cmdScan(args []string) {
 
 func cmdReport(args []string) {
 	fs := flag.NewFlagSet("report", flag.ExitOnError)
-	cfgPath := fs.String("config", "config.yaml", "path to config.yaml")
+	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
 	scanIDFlag := fs.Int64("scan-id", 0, "scan ID to report (0 = latest)")
 	_ = fs.Parse(args)
 
@@ -174,7 +179,7 @@ func cmdReport(args []string) {
 
 func cmdDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
-	cfgPath := fs.String("config", "config.yaml", "path to config.yaml")
+	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
 	id1 := fs.Int64("scan-id1", 0, "baseline scan ID")
 	id2 := fs.Int64("scan-id2", 0, "comparison scan ID")
 	_ = fs.Parse(args)
@@ -211,7 +216,7 @@ func cmdDiff(args []string) {
 
 func cmdScans(args []string) {
 	fs := flag.NewFlagSet("scans", flag.ExitOnError)
-	cfgPath := fs.String("config", "config.yaml", "path to config.yaml")
+	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
 	_ = fs.Parse(args)
 
 	cfg := mustLoadConfig(*cfgPath)
