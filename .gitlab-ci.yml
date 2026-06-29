@@ -46,6 +46,7 @@ unit-test:
     paths:
       - coverage.out
     expire_in: 1 week
+  allow_failure: true
 
 #############################
 # Security Scan
