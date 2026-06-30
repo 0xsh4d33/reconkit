@@ -1,0 +1,23 @@
+services:
+  reconkit:
+    build: .
+    image: reconkit:latest
+    volumes:
+      - reconkit-data:/data
+      - reconkit-scan-results:/scan_results
+      - reconkit-reports:/reports
+      - reconkit-screenshots:/screenshots
+      # Optional: mount your own config
+      - ./config.yaml:/etc/reconkit/config.yaml:ro
+    # nmap SYN scanning requires raw socket capabilities
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    # Run as root so nmap can open raw sockets
+    user: root
+
+volumes:
+  reconkit-data:
+  reconkit-scan-results:
+  reconkit-reports:
+  reconkit-screenshots:
