@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 https://github.com/RedSiege/EyeWitness.git /opt/eyewitness \
     && python3 -m venv /opt/eyewitness/eyewitness-venv \
     && /opt/eyewitness/eyewitness-venv/bin/pip install --no-cache-dir \
-        -r /opt/eyewitness/Python/requirements.txt
+        -r /opt/eyewitness/setup/requirements.txt
 
 # ProjectDiscovery binaries from stage 2
 COPY --from=tools /usr/local/bin/httpx      /usr/local/bin/httpx
