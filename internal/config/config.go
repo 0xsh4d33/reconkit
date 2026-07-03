@@ -14,6 +14,13 @@ type Config struct {
 	EyeWitness EyeWitnessConfig `yaml:"eyewitness"`
 	Subfinder  SubfinderConfig  `yaml:"subfinder"`
 	Paths      PathsConfig      `yaml:"paths"`
+	Web        WebConfig        `yaml:"web"`
+	Debug      bool             `yaml:"-"` // set via CLI flag only, not config file
+}
+
+type WebConfig struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
 }
 
 type DatabaseConfig struct {
@@ -103,5 +110,11 @@ func (c *Config) applyDefaults() {
 	}
 	if c.EyeWitness.Python == "" {
 		c.EyeWitness.Python = "eyewitness-venv/bin/python"
+	}
+	if c.Web.Host == "" {
+		c.Web.Host = "127.0.0.1"
+	}
+	if c.Web.Port == 0 {
+		c.Web.Port = 8080
 	}
 }

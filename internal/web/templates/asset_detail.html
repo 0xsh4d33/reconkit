@@ -1,0 +1,154 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit — {{.Asset.Name}}{{end}}
+{{define "nav_scans"}}active{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">{{.Asset.Name}}</span>
+  <span class="badge badge-type">{{.Asset.AssetType}}</span>
+  {{if .Asset.IP}}<code>{{.Asset.IP}}</code>{{end}}
+  <div class="ml-auto">
+    <a href="/scans/{{.ScanID}}" class="btn btn-ghost btn-sm">← scan #{{.ScanID}}</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab active" href="#" onclick="showTab('ports',this);return false">
+    ports ({{len .Ports}})
+  </a>
+  <a class="tab" href="#" onclick="showTab('services',this);return false">
+    web services ({{len .WebServices}})
+  </a>
+  <a class="tab" href="#" onclick="showTab('screenshots',this);return false">
+    screenshots ({{len .Screenshots}})
+  </a>
+  <a class="tab" href="#" onclick="showTab('findings',this);return false">
+    findings ({{len .Findings}})
+  </a>
+</div>
+
+<!-- PORTS -->
+<div id="tab-ports" class="tab-content active">
+  {{if .Ports}}
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>port</th><th>proto</th><th>state</th><th>service</th><th>product</th><th>version</th></tr>
+        </thead>
+        <tbody>
+          {{range .Ports}}
+          <tr>
+            <td><code>{{.Port}}</code></td>
+            <td>{{.Protocol}}</td>
+            <td><span class="badge badge-open">{{.State}}</span></td>
+            <td>{{.Service}}</td>
+            <td>{{.Product}}</td>
+            <td class="td-mono">{{.Version}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{else}}
+  <div class="empty">no ports found</div>
+  {{end}}
+</div>
+
+<!-- WEB SERVICES -->
+<div id="tab-services" class="tab-content">
+  {{if .WebServices}}
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>url</th><th>status</th><th>title</th><th>technologies</th></tr>
+        </thead>
+        <tbody>
+          {{range .WebServices}}
+          <tr>
+            <td><a href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a></td>
+            <td><code>{{.StatusCode}}</code></td>
+            <td>{{.Title}}</td>
+            <td>
+              {{if .Technologies}}
+              <div class="tags">
+                {{range splitTech .Technologies}}<span class="tag">{{.}}</span>{{end}}
+              </div>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{else}}
+  <div class="empty">no web services found</div>
+  {{end}}
+</div>
+
+<!-- SCREENSHOTS -->
+<div id="tab-screenshots" class="tab-content">
+  {{if .Screenshots}}
+  <div class="ss-grid">
+    {{range .Screenshots}}
+    <a href="/screenshots/{{.FilePath}}" target="_blank" class="ss-card">
+      <img class="ss-img" src="/screenshots/{{.FilePath}}" alt="screenshot" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="ss-img-ph" style="display:none">no preview</div>
+      <div class="ss-url">/screenshots/{{.FilePath}}</div>
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="empty">no screenshots</div>
+  {{end}}
+</div>
+
+<!-- FINDINGS -->
+<div id="tab-findings" class="tab-content">
+  {{if .Findings}}
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>severity</th><th>category</th><th>name</th><th>description</th><th>evidence</th></tr>
+        </thead>
+        <tbody>
+          {{range .Findings}}
+          <tr>
+            <td><span class="sev-{{lower .Severity}}">{{.Severity}}</span></td>
+            <td>{{.Category}}</td>
+            <td>{{.Name}}</td>
+            <td>{{.Description}}</td>
+            <td class="td-mono" style="font-size:10px;max-width:300px;word-break:break-all">{{.Evidence}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{else}}
+  <div class="empty">no findings</div>
+  {{end}}
+</div>
+
+<script>
+function showTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+}
+
+// open tab from URL hash
+const hash = location.hash.replace('#','');
+if (['ports','services','screenshots','findings'].includes(hash)) {
+  const tab = document.querySelector('.tab[onclick*="' + hash + '"]');
+  if (tab) showTab(hash, tab);
+}
+</script>
+{{end}}

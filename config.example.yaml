@@ -35,3 +35,7 @@ paths:
   scan_results: ./scan_results
   screenshots: ./screenshots
   reports: ./reports
+
+web:
+  host: "127.0.0.1"
+  port: 8080

@@ -1,0 +1,189 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit — Scans{{end}}
+{{define "nav_scans"}}active{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">scans</span>
+  <span class="page-sub">{{.TotalScans}} total</span>
+  <div class="ml-auto">
+    <a href="#new-scan" class="btn btn-primary btn-sm">+ new scan</a>
+  </div>
+</div>
+
+<!-- scan list -->
+{{if .Scans}}
+<div class="card">
+  <div class="card-body" style="padding-bottom:0">
+    <div class="toolbar">
+      <input type="text" id="scan-filter" placeholder="filter..." oninput="filterScans()">
+      <span class="count" id="scan-count">{{len .Scans}} scans</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="scans-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>profile</th>
+          <th>status</th>
+          <th>started</th>
+          <th>duration</th>
+          <th>actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Scans}}
+        <tr>
+          <td><a href="/scans/{{.ID}}">{{.ID}}</a></td>
+          <td>{{.Profile}}</td>
+          <td>
+            <span class="badge {{statusClass .Status}}">
+              {{statusIcon .Status}} {{.Status}}
+            </span>
+          </td>
+          <td class="td-mono">{{.StartedAt.Format "2006-01-02 15:04"}}</td>
+          <td class="td-mono">{{formatDuration .StartedAt .FinishedAt}}</td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <a href="/scans/{{.ID}}" class="btn btn-ghost btn-sm">view</a>
+            {{if not (index $.Running .ID)}}
+            <a href="/diff?base={{.ID}}" class="btn btn-ghost btn-sm">diff</a>
+            {{end}}
+            {{if index $.Running .ID}}
+            <button class="btn btn-danger btn-sm" onclick="cancelScan({{.ID}}, this)">cancel</button>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="empty">no scans yet — start one below</div>
+{{end}}
+
+<hr id="new-scan">
+
+<!-- new scan form -->
+<div class="page-header">
+  <span class="page-title">new scan</span>
+  <span class="page-sub">configure targets and tool parameters</span>
+</div>
+
+<form method="POST" action="/scans" id="scan-form">
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">targets</span></div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>profile name</label>
+          <input type="text" name="profile" value="default" placeholder="scan label" required>
+        </div>
+        <div class="field">
+          <label>domains (comma-separated)</label>
+          <input type="text" name="domains" placeholder="example.com, target.io">
+          <span class="field-hint">subfinder will enumerate subdomains</span>
+        </div>
+        <div class="field">
+          <label>subdomains (one per line)</label>
+          <textarea name="subdomains" placeholder="api.example.com&#10;admin.example.com"></textarea>
+        </div>
+        <div class="field">
+          <label>CIDRs / IPs</label>
+          <textarea name="cidrs" placeholder="10.0.0.0/24&#10;192.168.1.1"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">scanner configuration</span></div>
+    <div class="card-body">
+
+      <div class="section-sep">nmap</div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" name="enable_nmap" id="en-nmap" checked><span class="toggle-track"></span></label>
+        <div class="toggle-info">
+          <div class="toggle-lbl">enable nmap</div>
+          <div class="toggle-sub">port scanning on IP assets</div>
+        </div>
+      </div>
+      <div class="form-grid" style="margin-top:10px" id="nmap-opts">
+        <div class="field">
+          <label>nmap arguments</label>
+          <input type="text" name="nmap_args" value="-sV --open -T4">
+          <span class="field-hint">appended after target IP</span>
+        </div>
+        <div class="field">
+          <label>parallel workers</label>
+          <input type="number" name="nmap_workers" value="10" min="1" max="50">
+        </div>
+      </div>
+
+      <div class="section-sep" style="margin-top:18px">httpx</div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" name="enable_httpx" id="en-httpx" checked><span class="toggle-track"></span></label>
+        <div class="toggle-info">
+          <div class="toggle-lbl">enable httpx</div>
+          <div class="toggle-sub">HTTP probing and tech detection</div>
+        </div>
+      </div>
+      <div class="form-grid" style="margin-top:10px" id="httpx-opts">
+        <div class="field">
+          <label>ports to probe</label>
+          <input type="text" name="httpx_ports" value="80, 443, 8080, 8443, 8000, 8888">
+        </div>
+        <div class="field">
+          <label>threads</label>
+          <input type="number" name="httpx_threads" value="50" min="1" max="200">
+        </div>
+      </div>
+
+      <div class="section-sep" style="margin-top:18px">eyewitness</div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" name="enable_ew" id="en-ew" checked><span class="toggle-track"></span></label>
+        <div class="toggle-info">
+          <div class="toggle-lbl">enable eyewitness</div>
+          <div class="toggle-sub">screenshot web services</div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">▶ start scan</button>
+        <button type="reset" class="btn btn-ghost">reset</button>
+      </div>
+    </div>
+  </div>
+
+</form>
+
+<script>
+function filterScans() {
+  const q = document.getElementById('scan-filter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#scans-table tbody tr').forEach(row => {
+    const show = row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('scan-count').textContent = visible + ' scans';
+}
+
+function cancelScan(id, btn) {
+  if (!confirm('Cancel scan #' + id + '?')) return;
+  fetch('/api/scans/' + id + '/cancel', {method:'POST'})
+    .then(r => { if (r.ok) location.reload(); });
+}
+
+// Toggle nmap/httpx option visibility
+document.getElementById('en-nmap').addEventListener('change', function() {
+  document.getElementById('nmap-opts').style.opacity = this.checked ? '1' : '0.3';
+});
+document.getElementById('en-httpx').addEventListener('change', function() {
+  document.getElementById('httpx-opts').style.opacity = this.checked ? '1' : '0.3';
+});
+</script>
+{{end}}

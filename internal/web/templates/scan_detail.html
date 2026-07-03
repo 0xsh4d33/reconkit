@@ -1,0 +1,206 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit — Scan #{{.Scan.ID}}{{end}}
+{{define "nav_scans"}}active{{end}}
+
+{{define "nav_extra"}}
+{{if .IsRunning}}
+<div class="nav-badge"><span class="pulse"></span>scan #{{.Scan.ID}} running</div>
+{{end}}
+{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">scan #{{.Scan.ID}}</span>
+  <span class="badge {{statusClass .Scan.Status}}">{{statusIcon .Scan.Status}} {{.Scan.Status}}</span>
+  <span class="page-sub">profile: {{.Scan.Profile}}</span>
+  <span class="page-sub">started: {{.Scan.StartedAt.Format "2006-01-02 15:04:05"}}</span>
+  {{if .Scan.FinishedAt}}
+  <span class="page-sub">duration: {{formatDuration .Scan.StartedAt .Scan.FinishedAt}}</span>
+  {{end}}
+  <div class="ml-auto" style="display:flex;gap:8px">
+    {{if .IsRunning}}
+    <button class="btn btn-danger btn-sm" onclick="cancelScan()">cancel scan</button>
+    {{else}}
+    <a href="/reports/html/scan_{{.Scan.ID}}/index.html" class="btn btn-ghost btn-sm" target="_blank">view report ↗</a>
+    {{end}}
+    <a href="/scans" class="btn btn-ghost btn-sm">← back</a>
+  </div>
+</div>
+
+{{if .IsRunning}}
+<!-- phase stepper -->
+<div class="phases" id="phases">
+  <div class="phase" id="phase-discovery"><div class="phase-dot">1</div><div class="phase-name">discovery</div></div>
+  <div class="phase" id="phase-nmap"><div class="phase-dot">2</div><div class="phase-name">nmap</div></div>
+  <div class="phase" id="phase-httpx"><div class="phase-dot">3</div><div class="phase-name">httpx</div></div>
+  <div class="phase" id="phase-eyewitness"><div class="phase-dot">4</div><div class="phase-name">eyewitness</div></div>
+  <div class="phase" id="phase-report"><div class="phase-dot">5</div><div class="phase-name">report</div></div>
+</div>
+<div class="progress-bar"><div class="progress-fill indeterminate" id="progress"></div></div>
+{{end}}
+
+<div class="stats-grid">
+  <div class="stat"><div class="stat-val" id="stat-assets">{{.Stats.TotalAssets}}</div><div class="stat-lbl">assets</div></div>
+  <div class="stat"><div class="stat-val" id="stat-ports">{{.Stats.TotalPorts}}</div><div class="stat-lbl">ports</div></div>
+  <div class="stat"><div class="stat-val" id="stat-services">{{.Stats.TotalServices}}</div><div class="stat-lbl">web services</div></div>
+  <div class="stat"><div class="stat-val" id="stat-findings">{{.Stats.TotalFindings}}</div><div class="stat-lbl">findings</div></div>
+</div>
+
+{{if .IsRunning}}
+<!-- live log -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">live log</span>
+    <span style="margin-left:auto;color:var(--green);font-size:10px" id="sse-status">● connecting</span>
+  </div>
+  <div class="log-box" id="log-box"></div>
+</div>
+{{end}}
+
+<!-- asset table -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">assets</span>
+    <span class="page-sub" style="margin-left:4px">{{len .Assets}} discovered</span>
+  </div>
+  <div class="card-body" style="padding-bottom:0">
+    <div class="toolbar">
+      <input type="text" placeholder="filter assets..." oninput="filterAssets(this.value)">
+      <span class="count" id="asset-count">{{len .Assets}}</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="asset-table">
+      <thead>
+        <tr>
+          <th>asset</th>
+          <th>type</th>
+          <th>ip</th>
+          <th>first seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Assets}}
+        <tr>
+          <td><a href="/scans/{{$.Scan.ID}}/assets/{{.ID}}">{{.Name}}</a></td>
+          <td><span class="badge badge-type">{{.AssetType}}</span></td>
+          <td class="td-mono">{{if .IP}}{{.IP}}{{else}}—{{end}}</td>
+          <td class="td-mono">{{.FirstSeen.Format "15:04:05"}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4" class="empty">no assets yet</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+{{if .IsRunning}}
+const SCAN_ID = {{.Scan.ID}};
+let currentPhase = '';
+const phaseOrder = ['discovery','nmap','httpx','eyewitness','report'];
+
+function setPhase(name) {
+  if (name === currentPhase) return;
+  const prevIdx = phaseOrder.indexOf(currentPhase);
+  const newIdx  = phaseOrder.indexOf(name);
+  // mark all previous phases done
+  for (let i = 0; i < newIdx; i++) {
+    const el = document.getElementById('phase-' + phaseOrder[i]);
+    if (el) { el.className = 'phase done'; el.querySelector('.phase-dot').textContent = '✓'; }
+  }
+  // mark current active
+  const el = document.getElementById('phase-' + name);
+  if (el) { el.className = 'phase active'; el.querySelector('.phase-dot').textContent = '⬤'; }
+  currentPhase = name;
+}
+
+function appendLog(ts, msg, cls) {
+  const box = document.getElementById('log-box');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = '<span class="log-ts">' + ts + '</span><span class="log-msg ' + (cls||'') + '">' + escHtml(msg) + '</span>';
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function now() {
+  return new Date().toLocaleTimeString('en-GB',{hour12:false});
+}
+
+function markDone() {
+  phaseOrder.forEach(p => {
+    const el = document.getElementById('phase-' + p);
+    if (el) { el.className = 'phase done'; el.querySelector('.phase-dot').textContent = '✓'; }
+  });
+  const prog = document.getElementById('progress');
+  if (prog) { prog.classList.remove('indeterminate'); prog.style.width = '100%'; }
+  document.getElementById('sse-status').textContent = '✓ done';
+  document.getElementById('sse-status').style.color = 'var(--green)';
+  setTimeout(() => location.reload(), 1500);
+}
+
+function markFailed(msg) {
+  const el = document.getElementById('phase-' + currentPhase);
+  if (el) el.className = 'phase fail';
+  document.getElementById('sse-status').textContent = '✗ failed';
+  document.getElementById('sse-status').style.color = 'var(--red)';
+  appendLog(now(), 'scan failed: ' + msg, 'log-err');
+}
+
+// connect SSE
+const src = new EventSource('/api/scans/' + SCAN_ID + '/events');
+
+src.addEventListener('open', () => {
+  document.getElementById('sse-status').textContent = '● streaming';
+});
+
+src.addEventListener('phase', e => {
+  setPhase(e.data);
+  appendLog(now(), '[' + e.data + '] started', 'log-phase');
+});
+
+src.addEventListener('log', e => {
+  appendLog(now(), e.data, '');
+});
+
+src.addEventListener('done', () => {
+  src.close();
+  markDone();
+});
+
+src.addEventListener('failed', e => {
+  src.close();
+  markFailed(e.data);
+});
+
+src.onerror = () => {
+  document.getElementById('sse-status').textContent = '⚠ disconnected';
+  document.getElementById('sse-status').style.color = 'var(--amber)';
+};
+
+function cancelScan() {
+  if (!confirm('Cancel scan #' + SCAN_ID + '?')) return;
+  fetch('/api/scans/' + SCAN_ID + '/cancel', {method:'POST'})
+    .then(() => { src.close(); location.reload(); });
+}
+{{end}}
+
+function filterAssets(q) {
+  q = q.toLowerCase();
+  let n = 0;
+  document.querySelectorAll('#asset-table tbody tr').forEach(row => {
+    const show = row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) n++;
+  });
+  document.getElementById('asset-count').textContent = n;
+}
+</script>
+{{end}}

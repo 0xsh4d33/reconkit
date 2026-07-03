@@ -1,172 +1,225 @@
 # ReconKit
 
-Modular Go recon pipeline for bug bounty and pentest. Single binary, SQLite persistence, HTML/JSON reports generated from DB.
+Modular external recon pipeline for bug bounty and penetration testing.
+Discovers subdomains, resolves IPs, port-scans, probes HTTP, screenshots web services,
+and generates reports — all stored in SQLite so every scan is auditable.
 
-## Quick Start (Docker — recommended)
+Single binary, two modes:
 
-Docker bundles every tool (nmap, httpx, subfinder, dnsx, EyeWitness + Chromium) so there is nothing to install manually.
+| Mode | Use case |
+|------|---------|
+| **CLI** | Scripted scans, CI pipelines, headless Docker, automation |
+| **Web** | Interactive use, live progress, asset browser, diff viewer |
+
+---
+
+## Quick Start — Docker (web UI)
+
+Docker is designed for the **web interface only**. It bundles all tools (nmap, httpx, subfinder, dnsx, EyeWitness + Chromium) so you don't install anything on the host.
 
 ```bash
-# Build the image (~1.5 GB, takes a few minutes first time)
+# Build the image (~1.5 GB, first time takes a few minutes)
 docker compose build
 
-# Run a scan
-docker compose run --rm reconkit scan -domains example.com
-docker compose run --rm reconkit scan -targets targets.yaml -profile full
+# Start the web UI
+docker compose up -d
 
-# Re-generate reports
-docker compose run --rm reconkit report
+# Open http://127.0.0.1:8080
+# Submit scans, watch live progress, browse assets, compare scans.
 
-# Compare two scans
-docker compose run --rm reconkit diff -scan-id1 1 -scan-id2 2
-
-# List recorded scans
-docker compose run --rm reconkit scans
+# Stop
+docker compose down
 ```
 
-Scan data, results and reports are stored in named Docker volumes and persist across runs.
+Scan data, results, and screenshots persist in named Docker volumes across restarts.
 
-### Custom config
+For CLI usage — build the native binary instead (see below). Running `docker compose run` for every scan is unnecessary overhead.
 
-The image ships with `config.docker.yaml` pre-baked at `/etc/reconkit/config.yaml`.
-To use your own config mount it over that path:
+---
 
-```yaml
-# docker-compose.yml — uncomment the bind-mount line
-volumes:
-  - ./config.yaml:/etc/reconkit/config.yaml:ro
-```
+## Quick Start — CLI (native binary)
 
-## Quick Start (native build)
-
-Requires nmap, httpx, subfinder, dnsx, and optionally EyeWitness installed on the host.
+Requires nmap, httpx, subfinder, dnsx on PATH; EyeWitness configured via `config.yaml`.
 
 ```bash
-# Build
 go build -o recon ./cmd/recon/
-
-# Config
 cp config.example.yaml config.yaml
+# edit eyewitness.path + eyewitness.python
 
-# Run
-./recon scan -config config.yaml -targets targets.yaml
-./recon scan -config config.yaml -domains example.com
-./recon scan -config config.yaml -subdomains subdomains.txt -profile recheck
-./recon scan -config config.yaml -cidrs 10.0.0.0/24
+# CLI
+./recon scan -targets targets.yaml -profile full
+./recon scan -domains example.com
+./recon scan -subdomains subdomains.txt
+./recon scan -cidrs 10.0.0.0/24
+
+# Web
+./recon web                      # http://127.0.0.1:8080
+./recon web -addr 0.0.0.0:9090   # custom bind address
 ```
 
-Reports are written to `reports/html/scan_N/index.html` and `reports/json/scan_N.json`.
+---
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `scan`   | Run full pipeline against targets |
-| `report` | Re-generate reports from DB |
-| `diff`   | Compare two scans |
+| `scan`   | Run full recon pipeline against targets |
+| `report` | Regenerate HTML+JSON reports from DB |
+| `diff`   | Compare two scans, show new/disappeared assets |
 | `scans`  | List all recorded scans |
+| `web`    | Start web interface (default: http://127.0.0.1:8080) |
 
 ```bash
-./recon scan   -config config.yaml -targets targets.yaml -profile full
-./recon report -config config.yaml -scan-id 3
-./recon diff   -config config.yaml -scan-id1 1 -scan-id2 2
-./recon scans  -config config.yaml
+./recon scan   -targets targets.yaml -profile full
+./recon report -scan-id 3
+./recon diff   -scan-id1 2 -scan-id2 3
+./recon scans
+./recon web    -addr 127.0.0.1:8080
 ```
+
+---
+
+## Web Interface
+
+Start with `./recon web` then open `http://127.0.0.1:8080`.
+
+**Pages:**
+- `/scans` — scan list + new scan form with per-scan tool config
+- `/scans/{id}` — scan detail with live SSE progress, phase stepper, asset table
+- `/scans/{id}/assets/{aid}` — asset detail: ports, web services, screenshots, findings
+- `/diff` — compare two scans, see new/disappeared assets, new ports and services
+
+**JSON API:**
+```
+GET  /api/scans              list all scans
+GET  /api/scans/{id}         scan status + stats
+GET  /api/scans/{id}/events  SSE stream (live scan events)
+POST /api/scans/{id}/cancel  cancel running scan
+```
+
+Per-scan overrides available in the form: nmap arguments, parallel workers, httpx threads/ports,
+enable/disable individual scanners (nmap, httpx, eyewitness).
+
+---
 
 ## Targets File
 
-`targets.yaml` (copy from `targets.example.yaml`):
-
 ```yaml
+# targets.yaml
 targets:
   domains:
-    - example.com          # subfinder enumerates subdomains
+    - example.com        # subfinder enumerates subdomains
   subdomains:
-    - api.example.com      # pre-enumerated, skips subfinder
+    - api.example.com    # pre-enumerated, skips subfinder
+    - admin.example.com
   cidrs:
-    - 10.0.0.0/24          # expands to IPs + reverse DNS
+    - 10.0.0.0/24        # expands to IPs + reverse DNS
 ```
 
-## Config
+---
 
-`config.yaml` (copy from `config.example.yaml`):
+## Config Reference
 
 ```yaml
 database:
   path: ./data/recon.db
 
 workers:
+  discovery: 20
   nmap: 10
   httpx: 50
   eyewitness: 5
 
 nmap:
-  arguments: [-sV, --open, -T4]
+  arguments: ["-sV", "--open", "-T4"]
+
+httpx:
+  threads: 50
+  ports: [80, 443, 8080, 8443, 8000, 8888]
 
 eyewitness:
   enabled: true
   path: /path/to/EyeWitness
   python: /path/to/EyeWitness/eyewitness-venv/bin/python
+
+subfinder:
+  enabled: true
+
+paths:
+  scan_results: ./scan_results
+  screenshots:  ./screenshots
+  reports:      ./reports
+
+web:
+  host: "127.0.0.1"   # bind address for web mode
+  port: 8080
 ```
 
-## Tool Requirements (native only)
+---
 
-When running natively the following tools must be on `PATH` (or configured with full paths in `config.yaml`):
+## Tool Requirements (native)
 
 | Tool | Install |
 |------|---------|
-| `nmap` | `apt install nmap` |
+| `nmap` | `apt install nmap` / `brew install nmap` |
 | `httpx` | `go install github.com/projectdiscovery/httpx/cmd/httpx@latest` |
 | `subfinder` | `go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest` |
 | `dnsx` | `go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest` |
-| EyeWitness | [RedSiege/EyeWitness](https://github.com/RedSiege/EyeWitness) — config-driven |
+| EyeWitness | [RedSiege/EyeWitness](https://github.com/RedSiege/EyeWitness) — run `setup.sh`, set paths in config |
 
 Docker handles all of the above automatically.
+
+---
 
 ## Pipeline
 
 ```
-Domains → subfinder → subdomains
+Domains  → subfinder → subdomains
 Subdomains → dnsx → IP resolution
-CIDRs → expand → reverse DNS
-           ↓
-     INSERT assets (SQLite)
-           ↓
-   nmap (per-IP, worker pool)
-           ↓
-   httpx (batch, non-IP assets + IPs with open ports)
-           ↓
-   eyewitness (batch, web services)
-           ↓
-   HTML + JSON reports from DB
+CIDRs    → expand → reverse DNS
+              ↓
+       INSERT assets (SQLite)
+              ↓
+     nmap  (per-IP, worker pool)
+              ↓
+     httpx (batch HTTP probe + tech detect)
+              ↓
+     eyewitness (batch screenshots)
+              ↓
+     HTML + JSON reports from DB
 ```
+
+---
 
 ## Project Structure
 
 ```
-cmd/recon/                  CLI entrypoint
+cmd/recon/               — CLI entrypoint (scan, report, diff, scans, web)
 internal/
-  config/                   YAML config + defaults
-  models/                   Asset, Port, WebService, Screenshot, Finding, Scan
-  database/                 SQLite open + embedded WAL migrations
-  repository/               DB CRUD (Store)
-  discovery/                subfinder, dnsx, rdns, cidr
-  scanners/nmap|httpx|ew    Scanner implementations
-  workers/                  Generic Pool[T]
-  services/                 Pipeline orchestrator
-  reporters/                HTML + JSON reporters
-data/                       recon.db (gitignored)
-scan_results/               Raw nmap XML, httpx JSONL, eyewitness dirs
-reports/                    Generated HTML + JSON reports
-screenshots/                Permanent screenshot copies
-Dockerfile                  Multi-stage image (builder + tools + final)
-docker-compose.yml          Volume mounts + nmap capabilities
-config.docker.yaml          Default config baked into the Docker image
+  config/                — YAML config loader + defaults
+  models/                — Asset, Port, WebService, Screenshot, Finding, Scan
+  database/              — SQLite + WAL mode + embedded migrations
+  repository/            — All DB CRUD + stats + diff queries
+  discovery/             — subfinder, dnsx, rdns, CIDR expander
+  scanners/              — nmap, httpx, eyewitness (Scanner interface)
+  services/              — Pipeline orchestrator + input validation
+  workers/               — Generic concurrency pool
+  reporters/             — HTML + JSON report generators
+  web/                   — HTTP server, SSE broadcaster, scan manager, templates
+data/                    — recon.db (gitignored)
+scan_results/            — raw nmap XML, httpx JSONL
+reports/                 — generated HTML + JSON reports
+screenshots/             — EyeWitness screenshots
+Dockerfile               — multi-stage image (all tools bundled)
+docker-compose.yml       — CLI service + web service (--profile web)
+config.docker.yaml       — config baked into Docker image
 ```
+
+---
 
 ## Adding a Scanner
 
-1. Create `internal/scanners/yourscanner/yourscanner.go`
+1. Create `internal/scanners/myscanner/myscanner.go`
 2. Implement `Name() string` and `Run(ctx context.Context, scanID int64) error`
 3. Inject `*config.Config` and `*repository.Store` via constructor
-4. Append to the scanner slice in `internal/services/pipeline.go`
+4. Pass to `services.NewPipeline(cfg, store, ..., myscanner.New(cfg, store))`

@@ -1,0 +1,162 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit — Diff{{end}}
+{{define "nav_diff"}}active{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">diff</span>
+  <span class="page-sub">compare two scans</span>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">select scans</span></div>
+  <div class="card-body">
+    <form method="GET" action="/diff">
+      <div class="form-grid-3">
+        <div class="field">
+          <label>baseline (older)</label>
+          <select name="base">
+            <option value="">— select —</option>
+            {{range .Scans}}
+            <option value="{{.ID}}" {{if eq $.BaseID .ID}}selected{{end}}>
+              #{{.ID}} — {{.Profile}} ({{.StartedAt.Format "2006-01-02"}})
+            </option>
+            {{end}}
+          </select>
+        </div>
+        <div class="field">
+          <label>comparison (newer)</label>
+          <select name="cmp">
+            <option value="">— select —</option>
+            {{range .Scans}}
+            <option value="{{.ID}}" {{if eq $.CmpID .ID}}selected{{end}}>
+              #{{.ID}} — {{.Profile}} ({{.StartedAt.Format "2006-01-02"}})
+            </option>
+            {{end}}
+          </select>
+        </div>
+        <div class="field" style="justify-content:flex-end">
+          <label>&nbsp;</label>
+          <button type="submit" class="btn btn-primary">compare</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{if .Err}}
+<div style="padding:12px;border:1px solid var(--red-dim);border-radius:2px;color:var(--red);font-size:12px;margin-bottom:16px">
+  ✗ {{.Err}}
+</div>
+{{end}}
+
+{{if .Diff}}
+<div style="margin-bottom:12px;font-size:11px;color:var(--text-dim)">
+  scan <strong style="color:var(--text-hi)">#{{.BaseID}}</strong> →
+  scan <strong style="color:var(--text-hi)">#{{.CmpID}}</strong>
+</div>
+
+<div class="diff-cols">
+  <!-- new assets -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title diff-new">+ new assets</span>
+      <span class="page-sub" style="margin-left:4px">{{len .Diff.NewAssets}}</span>
+    </div>
+    <div class="card-body">
+      {{if .Diff.NewAssets}}
+      {{range .Diff.NewAssets}}
+      <div class="diff-line diff-new">
+        <span class="diff-sign">+</span>
+        <span>
+          <a href="/scans/{{$.CmpID}}/assets/{{.ID}}" style="color:var(--green)">{{.Name}}</a>
+          <span class="diff-meta">{{.AssetType}}{{if .IP}} · {{.IP}}{{end}}</span>
+        </span>
+      </div>
+      {{end}}
+      {{else}}
+      <div class="empty" style="padding:20px 0">no new assets</div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- disappeared assets -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title diff-gone">− disappeared</span>
+      <span class="page-sub" style="margin-left:4px">{{len .Diff.DisappearedAssets}}</span>
+    </div>
+    <div class="card-body">
+      {{if .Diff.DisappearedAssets}}
+      {{range .Diff.DisappearedAssets}}
+      <div class="diff-line diff-gone">
+        <span class="diff-sign">−</span>
+        <span>
+          <span style="color:var(--red)">{{.Name}}</span>
+          <span class="diff-meta">{{.AssetType}}{{if .IP}} · {{.IP}}{{end}}</span>
+        </span>
+      </div>
+      {{end}}
+      {{else}}
+      <div class="empty" style="padding:20px 0">no disappeared assets</div>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+{{if .Diff.NewPorts}}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title diff-new">+ new ports</span>
+    <span class="page-sub" style="margin-left:4px">{{len .Diff.NewPorts}}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>asset</th><th>port</th><th>proto</th><th>service</th></tr>
+      </thead>
+      <tbody>
+        {{range .Diff.NewPorts}}
+        <tr>
+          <td><a href="/scans/{{$.CmpID}}/assets/{{.Asset.ID}}">{{.Asset.Name}}</a></td>
+          <td><code>{{.Port.Port}}</code></td>
+          <td>{{.Port.Protocol}}</td>
+          <td>{{.Port.Service}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
+
+{{if .Diff.NewServices}}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title diff-new">+ new web services</span>
+    <span class="page-sub" style="margin-left:4px">{{len .Diff.NewServices}}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>url</th><th>status</th><th>title</th></tr>
+      </thead>
+      <tbody>
+        {{range .Diff.NewServices}}
+        <tr>
+          <td><a href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a></td>
+          <td><code>{{.StatusCode}}</code></td>
+          <td>{{.Title}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
+
+{{else if and (not .Err) (gt .BaseID 0)}}
+<div class="empty">run compare to see results</div>
+{{end}}
+{{end}}

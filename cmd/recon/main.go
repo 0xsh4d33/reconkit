@@ -6,10 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 	"syscall"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/blackfly/reconkit/internal/reporters"
 	"github.com/blackfly/reconkit/internal/repository"
 	"github.com/blackfly/reconkit/internal/services"
+	"github.com/blackfly/reconkit/internal/web"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,11 +28,16 @@ const (
 
 const usage = `Usage: recon <command> [flags]
 
+Modes:
+  CLI  — run scans from the terminal, generate reports, compare scans
+  Web  — HTTP server with UI, live scan progress, asset browser, diff viewer
+
 Commands:
   scan    Run a full recon pipeline against targets
   report  Generate HTML/JSON reports from the database
   diff    Compare two scans and show changes
   scans   List all recorded scans
+  web     Start the web interface (default: http://127.0.0.1:8080)
 
 Flags common to all commands:
   -config string   Path to config.yaml (default: config.yaml)
@@ -58,6 +62,8 @@ func main() {
 		cmdDiff(os.Args[2:])
 	case "scans":
 		cmdScans(os.Args[2:])
+	case "web":
+		cmdWeb(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n%s", os.Args[1], usage)
 		os.Exit(1)
@@ -83,9 +89,11 @@ func cmdScan(args []string) {
 	cidrsFlag := fs.String("cidrs", "", "comma-separated CIDR ranges (or @file.txt)")
 	profileFlag := fs.String("profile", "default", "scan profile label")
 	reportFlag := fs.Bool("report", true, "generate HTML+JSON report after scan")
+	debugFlag := fs.Bool("debug", false, "enable verbose pipeline logging")
 	_ = fs.Parse(args)
 
 	cfg := mustLoadConfig(*cfgPath)
+	cfg.Debug = *debugFlag
 
 	var targets services.Targets
 	targets.Profile = *profileFlag
@@ -109,7 +117,7 @@ func cmdScan(args []string) {
 		targets.CIDRs = append(targets.CIDRs, parseListFlag(*cidrsFlag)...)
 	}
 
-	targets = sanitizeTargets(targets)
+	targets = services.SanitizeTargets(targets)
 
 	if len(targets.Domains)+len(targets.Subdomains)+len(targets.CIDRs) == 0 {
 		fmt.Fprintln(os.Stderr, "error: no targets specified (use -targets, -domains, or -cidrs)")
@@ -246,49 +254,40 @@ func cmdScans(args []string) {
 	}
 }
 
-// ── input validation ──────────────────────────────────────────────────────────
+// ── web ───────────────────────────────────────────────────────────────────────
 
-// validHostname accepts labels separated by dots: each label is [a-zA-Z0-9-],
-// starts/ends with alphanumeric, 1–63 chars. Total ≤253 chars.
-var validHostname = regexp.MustCompile(
-	`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`,
-)
+func cmdWeb(args []string) {
+	fs := flag.NewFlagSet("web", flag.ExitOnError)
+	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
+	addrFlag := fs.String("addr", "", "override listen address (e.g. 0.0.0.0:9090)")
+	_ = fs.Parse(args)
 
-func isValidHostname(s string) bool {
-	return len(s) <= 253 && validHostname.MatchString(s)
-}
-
-func sanitizeTargets(t services.Targets) services.Targets {
-	out := services.Targets{Profile: t.Profile}
-
-	for _, d := range t.Domains {
-		if isValidHostname(d) {
-			out.Domains = append(out.Domains, d)
-		} else {
-			log.Printf("[input] rejected invalid domain: %q", d)
+	cfg := mustLoadConfig(*cfgPath)
+	if *addrFlag != "" {
+		// parse host:port override
+		parts := strings.SplitN(*addrFlag, ":", 2)
+		if len(parts) == 2 {
+			cfg.Web.Host = parts[0]
+			fmt.Sscanf(parts[1], "%d", &cfg.Web.Port)
 		}
 	}
 
-	for _, s := range t.Subdomains {
-		if isValidHostname(s) {
-			out.Subdomains = append(out.Subdomains, s)
-		} else {
-			log.Printf("[input] rejected invalid subdomain: %q", s)
-		}
+	db := mustOpenDB(cfg.Database.Path)
+	defer db.Close()
+	store := repository.New(db)
+
+	srv, err := web.New(cfg, store)
+	if err != nil {
+		log.Fatalf("web: init server: %v", err)
 	}
 
-	for _, c := range t.CIDRs {
-		if _, _, err := net.ParseCIDR(c); err == nil {
-			out.CIDRs = append(out.CIDRs, c)
-		} else if net.ParseIP(c) != nil {
-			// bare IP without mask — accept as /32 or /128
-			out.CIDRs = append(out.CIDRs, c)
-		} else {
-			log.Printf("[input] rejected invalid CIDR/IP: %q", c)
-		}
-	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	return out
+	log.Printf("[web] listening on http://%s:%d", cfg.Web.Host, cfg.Web.Port)
+	if err := srv.Start(ctx); err != nil {
+		log.Fatalf("web: %v", err)
+	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
