@@ -74,11 +74,11 @@
     <table id="asset-table">
       <thead>
         <tr>
-          <th>asset</th>
-          <th>type</th>
-          <th>ip</th>
-          <th>open ports</th>
-          <th>first seen</th>
+          <th data-col="0">asset ↕</th>
+          <th data-col="1">type ↕</th>
+          <th data-col="2">ip ↕</th>
+          <th data-col="3">open ports ↕</th>
+          <th data-col="4">first seen ↕</th>
         </tr>
       </thead>
       <tbody>
@@ -204,5 +204,57 @@ function filterAssets(q) {
   });
   document.getElementById('asset-count').textContent = n;
 }
+
+// ── table sort ────────────────────────────────────────────────────────────────
+let sortCol = -1, sortAsc = true;
+
+function ipToNum(s) {
+  const p = s.split('.').map(Number);
+  return p.length === 4 ? ((p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3]) >>> 0 : 0;
+}
+
+function cellVal(row, col) {
+  return (row.cells[col]?.textContent || '').trim();
+}
+
+function compareVal(a, b, col) {
+  // IP column — numeric compare
+  if (col === 2) {
+    const na = ipToNum(a), nb = ipToNum(b);
+    if (na || nb) return na - nb;
+  }
+  // open ports column — numeric, treat '—' as -1
+  if (col === 3) {
+    const na = a === '—' ? -1 : parseInt(a, 10);
+    const nb = b === '—' ? -1 : parseInt(b, 10);
+    return na - nb;
+  }
+  return a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'});
+}
+
+document.querySelectorAll('#asset-table thead th[data-col]').forEach(th => {
+  th.style.cursor = 'pointer';
+  th.addEventListener('click', () => {
+    const col = parseInt(th.dataset.col);
+    if (sortCol === col) {
+      sortAsc = !sortAsc;
+    } else {
+      sortCol = col;
+      sortAsc = true;
+    }
+    // update header indicators
+    document.querySelectorAll('#asset-table thead th[data-col]').forEach(h => {
+      const base = h.textContent.replace(/ [↑↓↕]$/, '');
+      h.textContent = base + (parseInt(h.dataset.col) === sortCol ? (sortAsc ? ' ↑' : ' ↓') : ' ↕');
+    });
+    const tbody = document.querySelector('#asset-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+      const av = cellVal(a, col), bv = cellVal(b, col);
+      return compareVal(av, bv, col) * (sortAsc ? 1 : -1);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  });
+});
 </script>
 {{end}}
