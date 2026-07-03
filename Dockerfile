@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o reconkit ./cmd/recon
 # ── Stage 2: Download ProjectDiscovery tool binaries ─────────────────────────
 FROM debian:bookworm-slim AS tools
 
-ARG HTTPX_VERSION=2.6.7
+ARG HTTPX_VERSION=1.9.0
 ARG SUBFINDER_VERSION=2.6.6
 ARG DNSX_VERSION=1.2.1
 
