@@ -86,6 +86,11 @@ func (p *Pipeline) execute(ctx context.Context, scanID int64, targets Targets, e
 
 	// ── Discovery ─────────────────────────────────────────────────────────────
 	assets, err := p.discover(ctx, targets)
+	if ctx.Err() != nil {
+		status = models.ScanStatusCanceled
+		emit("failed", "canceled")
+		return ctx.Err()
+	}
 	if err != nil {
 		status = models.ScanStatusFailed
 		emit("failed", err.Error())
@@ -104,9 +109,19 @@ func (p *Pipeline) execute(ctx context.Context, scanID int64, targets Targets, e
 
 	// ── Scanning phases ───────────────────────────────────────────────────────
 	for _, sc := range p.scanners {
+		if ctx.Err() != nil {
+			status = models.ScanStatusCanceled
+			emit("failed", "canceled")
+			return ctx.Err()
+		}
 		log.Printf("[pipeline] running scanner: %s", sc.Name())
 		emit("phase", sc.Name())
 		if err := sc.Run(ctx, scanID); err != nil {
+			if ctx.Err() != nil {
+				status = models.ScanStatusCanceled
+				emit("failed", "canceled")
+				return ctx.Err()
+			}
 			log.Printf("[pipeline] scanner %s error: %v", sc.Name(), err)
 			emit("log", fmt.Sprintf("[%s] error: %v", sc.Name(), err))
 		} else {

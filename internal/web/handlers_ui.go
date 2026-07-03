@@ -92,11 +92,12 @@ func (s *Server) handleSubmitScan(w http.ResponseWriter, r *http.Request) {
 
 type scanDetailData struct {
 	pageBase
-	Scan      *models.Scan
-	Stats     *repository.ScanStats
-	Assets    []models.Asset
-	IsRunning bool
-	Config    scanConfigDefaults
+	Scan       *models.Scan
+	Stats      *repository.ScanStats
+	Assets     []models.Asset
+	PortCounts map[string]int
+	IsRunning  bool
+	Config     scanConfigDefaults
 }
 
 type scanConfigDefaults struct {
@@ -131,12 +132,19 @@ func (s *Server) handleScanDetail(w http.ResponseWriter, r *http.Request) {
 		assets = []models.Asset{}
 	}
 
+	portCounts, err := s.store.GetPortCountsByScan(scanID)
+	if err != nil {
+		log.Printf("[web] get port counts: %v", err)
+		portCounts = map[string]int{}
+	}
+
 	s.renderTemplate(w, "scan_detail", scanDetailData{
-		pageBase:  s.baseFor("scans"),
-		Scan:      scan,
-		Stats:     stats,
-		Assets:    assets,
-		IsRunning: s.scanManager.IsRunning(scanID),
+		pageBase:   s.baseFor("scans"),
+		Scan:       scan,
+		Stats:      stats,
+		Assets:     assets,
+		PortCounts: portCounts,
+		IsRunning:  s.scanManager.IsRunning(scanID),
 		Config: scanConfigDefaults{
 			NmapArgs:     joinStrings(s.cfg.Nmap.Arguments),
 			NmapWorkers:  s.cfg.Workers.Nmap,

@@ -213,6 +213,31 @@ func (s *Store) GetPortsByAsset(assetID int64) ([]models.Port, error) {
 	return ports, rows.Err()
 }
 
+// GetPortCountsByScan returns a map of IP → open port count for all assets in a scan.
+// Keyed by IP so both IP assets and subdomain assets (which carry .IP from dnsx) share the same lookup.
+func (s *Store) GetPortCountsByScan(scanID int64) (map[string]int, error) {
+	rows, err := s.db.Query(
+		`SELECT a.ip, COUNT(*) FROM ports p
+		 JOIN assets a ON a.id = p.asset_id
+		 WHERE a.scan_id = ? AND a.ip != '' GROUP BY a.ip`,
+		scanID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var ip string
+		var count int
+		if err := rows.Scan(&ip, &count); err != nil {
+			return nil, err
+		}
+		counts[ip] = count
+	}
+	return counts, rows.Err()
+}
+
 // ── Web Services ──────────────────────────────────────────────────────────────
 
 func (s *Store) InsertWebService(ws *models.WebService) error {

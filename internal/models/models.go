@@ -17,6 +17,7 @@ const (
 	ScanStatusRunning  ScanStatus = "running"
 	ScanStatusDone     ScanStatus = "done"
 	ScanStatusFailed   ScanStatus = "failed"
+	ScanStatusCanceled ScanStatus = "canceled"
 )
 
 type Scan struct {

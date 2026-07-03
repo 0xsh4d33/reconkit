@@ -77,6 +77,7 @@
           <th>asset</th>
           <th>type</th>
           <th>ip</th>
+          <th>open ports</th>
           <th>first seen</th>
         </tr>
       </thead>
@@ -86,10 +87,11 @@
           <td><a href="/scans/{{$.Scan.ID}}/assets/{{.ID}}">{{.Name}}</a></td>
           <td><span class="badge badge-type">{{.AssetType}}</span></td>
           <td class="td-mono">{{if .IP}}{{.IP}}{{else}}—{{end}}</td>
+          <td class="td-mono">{{if index $.PortCounts .IP}}<span class="badge badge-open">{{index $.PortCounts .IP}}</span>{{else}}—{{end}}</td>
           <td class="td-mono">{{.FirstSeen.Format "15:04:05"}}</td>
         </tr>
         {{else}}
-        <tr><td colspan="4" class="empty">no assets yet</td></tr>
+        <tr><td colspan="5" class="empty">no assets yet</td></tr>
         {{end}}
       </tbody>
     </table>

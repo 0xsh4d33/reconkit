@@ -175,14 +175,15 @@ func templateFuncs() template.FuncMap {
 		},
 
 		"statusClass": func(status any) string {
-			s := fmt.Sprintf("%v", status)
-			switch s {
+			switch fmt.Sprintf("%v", status) {
 			case "running":
 				return "badge-running"
 			case "done":
 				return "badge-done"
 			case "failed":
 				return "badge-failed"
+			case "canceled":
+				return "badge-unknown"
 			default:
 				return "badge-unknown"
 			}
@@ -196,6 +197,8 @@ func templateFuncs() template.FuncMap {
 				return "✓"
 			case "failed":
 				return "✗"
+			case "canceled":
+				return "⊘"
 			default:
 				return "?"
 			}
