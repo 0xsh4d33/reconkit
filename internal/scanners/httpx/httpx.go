@@ -79,6 +79,9 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	args := []string{
 		"-l", tmp.Name(),
 		"-ports", strings.Join(ports, ","),
+		"-ss",
+		"-esb",
+		"-ehb",
 		"-status-code",
 		"-title",
 		"-tech-detect",
@@ -119,7 +122,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		if line == "" || !strings.HasPrefix(line, "{") {
 			continue
 		}
-		ws, assetHost, err := parseLine(line)
+		ws, assetHost, screenshotPath, err := parseLine(line)
 		if err != nil {
 			continue
 		}
@@ -139,6 +142,21 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 			continue
 		}
 		count++
+
+		// Handle screenshot if present
+		if screenshotPath != "" {
+			destPath := filepath.Join(s.cfg.Paths.Screenshots, fmt.Sprintf("%s_%d.png", assetHost, asset.ID))
+			if err := copyFile(screenshotPath, destPath); err != nil {
+				log.Printf("[httpx] copy screenshot: %v", err)
+				continue
+			}
+			if err := s.store.InsertScreenshot(&models.Screenshot{
+				AssetID:  asset.ID,
+				FilePath: filepath.Base(destPath),
+			}); err != nil {
+				log.Printf("[httpx] insert screenshot: %v", err)
+			}
+		}
 	}
 
 	// Store raw result against first asset as a marker
@@ -174,31 +192,33 @@ func buildHostMap(assets []models.Asset) map[string]*models.Asset {
 
 // httpxEntry covers both old and new httpx JSON field names.
 type httpxEntry struct {
-	URL          string   `json:"url"`
-	Input        string   `json:"input"`
-	Host         string   `json:"host"`
-	Port         string   `json:"port"`
-	Title        string   `json:"title"`
-	StatusCode   int      `json:"status_code"`
-	StatusCodeV2 int      `json:"status-code"`
-	WebServer    string   `json:"webserver"`
-	HostIP       string   `json:"host_ip"`
-	A            []string `json:"a"`
-	Scheme       string   `json:"scheme"`
-	FaviconHash  string   `json:"favicon_hash"`
-	FaviconHashV2 string  `json:"favicon-hash"`
-	Tech         []string `json:"tech"`
-	Technologies []string `json:"technologies"`
-	Failed       bool     `json:"failed"`
+	URL              string   `json:"url"`
+	Input            string   `json:"input"`
+	Host             string   `json:"host"`
+	Port             string   `json:"port"`
+	Title            string   `json:"title"`
+	StatusCode       int      `json:"status_code"`
+	StatusCodeV2     int      `json:"status-code"`
+	WebServer        string   `json:"webserver"`
+	HostIP           string   `json:"host_ip"`
+	A                []string `json:"a"`
+	Scheme           string   `json:"scheme"`
+	FaviconHash      string   `json:"favicon_hash"`
+	FaviconHashV2    string   `json:"favicon-hash"`
+	Tech             []string `json:"tech"`
+	Technologies     []string `json:"technologies"`
+	Failed           bool     `json:"failed"`
+	ScreenshotPath   string   `json:"screenshot_path"`
+	ScreenshotPathRel string  `json:"screenshot_path_rel"`
 }
 
-func parseLine(line string) (*models.WebService, string, error) {
+func parseLine(line string) (*models.WebService, string, string, error) {
 	var e httpxEntry
 	if err := json.Unmarshal([]byte(line), &e); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if e.Failed || e.URL == "" {
-		return nil, "", fmt.Errorf("skipped")
+		return nil, "", "", fmt.Errorf("skipped")
 	}
 
 	// Normalise fields that have two possible names
@@ -237,5 +257,16 @@ func parseLine(line string) (*models.WebService, string, error) {
 		Technologies: string(techJSON),
 		FaviconHash:  faviconHash,
 	}
-	return ws, assetHost, nil
+	return ws, assetHost, e.ScreenshotPath, nil
+}
+
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(src) // #nosec G304 -- src is internally generated from httpx output
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o600) // #nosec G306 G703 -- dst is assembled from controlled base path
 }

@@ -24,3 +24,4 @@ targets.yaml
 *.log
 reconkit
 .claude/
+output/

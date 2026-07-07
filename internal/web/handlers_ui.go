@@ -70,7 +70,6 @@ func (s *Server) handleSubmitScan(w http.ResponseWriter, r *http.Request) {
 		r.FormValue("httpx_ports"),
 		r.FormValue("enable_nmap") == "on",
 		r.FormValue("enable_httpx") == "on",
-		r.FormValue("enable_ew") == "on",
 	)
 
 	if len(req.Targets.Domains)+len(req.Targets.Subdomains)+len(req.Targets.CIDRs) == 0 {

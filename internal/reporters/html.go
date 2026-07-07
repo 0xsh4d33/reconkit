@@ -15,12 +15,13 @@ import (
 )
 
 type HTMLReporter struct {
-	store     *repository.Store
-	outputDir string
+	store           *repository.Store
+	outputDir       string
+	screenshotsDir  string
 }
 
-func NewHTMLReporter(store *repository.Store, outputDir string) *HTMLReporter {
-	return &HTMLReporter{store: store, outputDir: outputDir}
+func NewHTMLReporter(store *repository.Store, outputDir, screenshotsDir string) *HTMLReporter {
+	return &HTMLReporter{store: store, outputDir: outputDir, screenshotsDir: screenshotsDir}
 }
 
 // ── View models ───────────────────────────────────────────────────────────────
@@ -114,8 +115,9 @@ func (r *HTMLReporter) Generate(scanID int64) error {
 				continue
 			}
 			fname := filepath.Base(ss.FilePath)
+			src := filepath.Join(r.screenshotsDir, fname)
 			dest := filepath.Join(ssDir, fname)
-			if err := copyFileReport(ss.FilePath, dest); err != nil {
+			if err := copyFileReport(src, dest); err != nil {
 				log.Printf("[html] copy screenshot %s: %v", ss.FilePath, err)
 				continue
 			}

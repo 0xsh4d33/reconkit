@@ -13,7 +13,6 @@ import (
 	"github.com/blackfly/reconkit/internal/reporters"
 	"github.com/blackfly/reconkit/internal/repository"
 	"github.com/blackfly/reconkit/internal/scanners"
-	ew "github.com/blackfly/reconkit/internal/scanners/eyewitness"
 	"github.com/blackfly/reconkit/internal/scanners/httpx"
 	"github.com/blackfly/reconkit/internal/scanners/nmap"
 	"github.com/blackfly/reconkit/internal/services"
@@ -28,7 +27,6 @@ type ScanRequest struct {
 	HTTPxPorts   string // comma-separated ints, overrides config if non-empty
 	EnableNmap   bool
 	EnableHTTPx  bool
-	EnableEW     bool
 }
 
 // SSEEvent is a single server-sent event pushed to the browser.
@@ -126,9 +124,6 @@ func (sm *ScanManager) Submit(req ScanRequest) (int64, error) {
 	if req.EnableHTTPx {
 		sc = append(sc, httpx.New(cfg, sm.store))
 	}
-	if req.EnableEW {
-		sc = append(sc, ew.New(cfg, sm.store))
-	}
 
 	pipeline := services.NewPipeline(cfg, sm.store, sc...)
 
@@ -163,7 +158,7 @@ func (sm *ScanManager) Submit(req ScanRequest) (int64, error) {
 		}
 
 		// Auto-generate reports on completion.
-		htmlR := reporters.NewHTMLReporter(sm.store, sm.cfg.Paths.Reports)
+		htmlR := reporters.NewHTMLReporter(sm.store, sm.cfg.Paths.Reports, sm.cfg.Paths.Screenshots)
 		jsonR := reporters.NewJSONReporter(sm.store, sm.cfg.Paths.Reports)
 		if err := htmlR.Generate(scanID); err != nil {
 			log.Printf("[scan #%d] html report: %v", scanID, err)
@@ -262,7 +257,7 @@ func parseScanRequest(
 	profile, domains, subdomains, cidrs string,
 	nmapArgs string, nmapWorkers int,
 	httpxThreads int, httpxPorts string,
-	enableNmap, enableHTTPx, enableEW bool,
+	enableNmap, enableHTTPx bool,
 ) ScanRequest {
 	targets := services.SanitizeTargets(services.Targets{
 		Profile:    profile,
@@ -279,7 +274,6 @@ func parseScanRequest(
 		HTTPxPorts:   httpxPorts,
 		EnableNmap:   enableNmap,
 		EnableHTTPx:  enableHTTPx,
-		EnableEW:     enableEW,
 	}
 }
 

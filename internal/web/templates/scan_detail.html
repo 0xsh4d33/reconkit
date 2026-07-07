@@ -34,8 +34,7 @@
   <div class="phase" id="phase-discovery"><div class="phase-dot">1</div><div class="phase-name">discovery</div></div>
   <div class="phase" id="phase-nmap"><div class="phase-dot">2</div><div class="phase-name">nmap</div></div>
   <div class="phase" id="phase-httpx"><div class="phase-dot">3</div><div class="phase-name">httpx</div></div>
-  <div class="phase" id="phase-eyewitness"><div class="phase-dot">4</div><div class="phase-name">eyewitness</div></div>
-  <div class="phase" id="phase-report"><div class="phase-dot">5</div><div class="phase-name">report</div></div>
+  <div class="phase" id="phase-report"><div class="phase-dot">4</div><div class="phase-name">report</div></div>
 </div>
 <div class="progress-bar"><div class="progress-fill indeterminate" id="progress"></div></div>
 {{end}}
@@ -102,7 +101,7 @@
 {{if .IsRunning}}
 const SCAN_ID = {{.Scan.ID}};
 let currentPhase = '';
-const phaseOrder = ['discovery','nmap','httpx','eyewitness','report'];
+const phaseOrder = ['discovery','nmap','httpx','report'];
 
 function setPhase(name) {
   if (name === currentPhase) return;

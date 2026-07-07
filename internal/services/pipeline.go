@@ -10,7 +10,6 @@ import (
 	"github.com/blackfly/reconkit/internal/models"
 	"github.com/blackfly/reconkit/internal/repository"
 	"github.com/blackfly/reconkit/internal/scanners"
-	ew "github.com/blackfly/reconkit/internal/scanners/eyewitness"
 	"github.com/blackfly/reconkit/internal/scanners/httpx"
 	"github.com/blackfly/reconkit/internal/scanners/nmap"
 	"github.com/blackfly/reconkit/internal/workers"
@@ -36,13 +35,12 @@ type Pipeline struct {
 }
 
 // NewPipeline creates a pipeline with the given scanners.
-// If no scanners are provided, defaults to [nmap, httpx, eyewitness].
+// If no scanners are provided, defaults to [nmap, httpx].
 func NewPipeline(cfg *config.Config, store *repository.Store, sc ...scanners.Scanner) *Pipeline {
 	if len(sc) == 0 {
 		sc = []scanners.Scanner{
 			nmap.New(cfg, store),
 			httpx.New(cfg, store),
-			ew.New(cfg, store),
 		}
 	}
 	return &Pipeline{cfg: cfg, store: store, scanners: sc}

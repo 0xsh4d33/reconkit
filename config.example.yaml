@@ -5,7 +5,6 @@ workers:
   discovery: 20
   nmap: 10
   httpx: 50
-  eyewitness: 5
 
 nmap:
   arguments:
@@ -22,11 +21,6 @@ httpx:
     - 8443
     - 8000
     - 8888
-
-eyewitness:
-  enabled: true
-  path: /path/to/EyeWitness
-  python: /path/to/EyeWitness/eyewitness-venv/bin/python
 
 subfinder:
   enabled: true

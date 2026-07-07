@@ -138,7 +138,7 @@ func cmdScan(args []string) {
 	}
 
 	if *reportFlag {
-		htmlR := reporters.NewHTMLReporter(store, cfg.Paths.Reports)
+		htmlR := reporters.NewHTMLReporter(store, cfg.Paths.Reports, cfg.Paths.Screenshots)
 		jsonR := reporters.NewJSONReporter(store, cfg.Paths.Reports)
 		if err := htmlR.Generate(scanID); err != nil {
 			log.Printf("html report: %v", err)
@@ -172,7 +172,7 @@ func cmdReport(args []string) {
 		log.Printf("using latest scan: #%d", scanID)
 	}
 
-	htmlR := reporters.NewHTMLReporter(store, cfg.Paths.Reports)
+	htmlR := reporters.NewHTMLReporter(store, cfg.Paths.Reports, cfg.Paths.Screenshots)
 	jsonR := reporters.NewJSONReporter(store, cfg.Paths.Reports)
 
 	if err := htmlR.Generate(scanID); err != nil {

@@ -7,15 +7,14 @@ import (
 )
 
 type Config struct {
-	Database   DatabaseConfig   `yaml:"database"`
-	Workers    WorkersConfig    `yaml:"workers"`
-	Nmap       NmapConfig       `yaml:"nmap"`
-	HTTPx      HTTPxConfig      `yaml:"httpx"`
-	EyeWitness EyeWitnessConfig `yaml:"eyewitness"`
-	Subfinder  SubfinderConfig  `yaml:"subfinder"`
-	Paths      PathsConfig      `yaml:"paths"`
-	Web        WebConfig        `yaml:"web"`
-	Debug      bool             `yaml:"-"` // set via CLI flag only, not config file
+	Database  DatabaseConfig  `yaml:"database"`
+	Workers   WorkersConfig   `yaml:"workers"`
+	Nmap      NmapConfig      `yaml:"nmap"`
+	HTTPx     HTTPxConfig     `yaml:"httpx"`
+	Subfinder SubfinderConfig `yaml:"subfinder"`
+	Paths     PathsConfig     `yaml:"paths"`
+	Web       WebConfig       `yaml:"web"`
+	Debug     bool            `yaml:"-"` // set via CLI flag only, not config file
 }
 
 type WebConfig struct {
@@ -28,10 +27,9 @@ type DatabaseConfig struct {
 }
 
 type WorkersConfig struct {
-	Discovery  int `yaml:"discovery"`
-	Nmap       int `yaml:"nmap"`
-	HTTPx      int `yaml:"httpx"`
-	EyeWitness int `yaml:"eyewitness"`
+	Discovery int `yaml:"discovery"`
+	Nmap      int `yaml:"nmap"`
+	HTTPx     int `yaml:"httpx"`
 }
 
 type NmapConfig struct {
@@ -41,12 +39,6 @@ type NmapConfig struct {
 type HTTPxConfig struct {
 	Threads int   `yaml:"threads"`
 	Ports   []int `yaml:"ports"`
-}
-
-type EyeWitnessConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Path    string `yaml:"path"`
-	Python  string `yaml:"python"`
 }
 
 type SubfinderConfig struct {
@@ -87,9 +79,6 @@ func (c *Config) applyDefaults() {
 	if c.Workers.HTTPx == 0 {
 		c.Workers.HTTPx = 50
 	}
-	if c.Workers.EyeWitness == 0 {
-		c.Workers.EyeWitness = 5
-	}
 	if c.Paths.ScanResults == "" {
 		c.Paths.ScanResults = "./scan_results"
 	}
@@ -107,9 +96,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.HTTPx.Threads == 0 {
 		c.HTTPx.Threads = 50
-	}
-	if c.EyeWitness.Python == "" {
-		c.EyeWitness.Python = "eyewitness-venv/bin/python"
 	}
 	if c.Web.Host == "" {
 		c.Web.Host = "127.0.0.1"

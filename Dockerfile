@@ -38,24 +38,13 @@ RUN curl -fsSL "https://github.com/projectdiscovery/dnsx/releases/download/v${DN
 # ── Stage 3: Final image ──────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-# System packages: nmap + Python + Chromium for EyeWitness
+# System packages: nmap + tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
-        python3 \
-        python3-venv \
-        python3-pip \
-        chromium \
-        chromium-driver \
         git \
         ca-certificates \
         curl \
     && rm -rf /var/lib/apt/lists/*
-
-# EyeWitness: clone and install into a virtualenv
-RUN git clone --depth 1 https://github.com/RedSiege/EyeWitness.git /opt/eyewitness \
-    && python3 -m venv /opt/eyewitness/eyewitness-venv \
-    && /opt/eyewitness/eyewitness-venv/bin/pip install --no-cache-dir \
-        -r /opt/eyewitness/setup/requirements.txt
 
 # ProjectDiscovery binaries from stage 2
 COPY --from=tools /usr/local/bin/httpx      /usr/local/bin/httpx
