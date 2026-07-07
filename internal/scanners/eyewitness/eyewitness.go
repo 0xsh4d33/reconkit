@@ -147,7 +147,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 
 		if err := s.store.InsertScreenshot(&models.Screenshot{
 			AssetID:  assetID,
-			FilePath: dest,
+			FilePath: filepath.Base(dest),
 		}); err != nil {
 			log.Printf("[eyewitness] insert screenshot: %v", err)
 			continue

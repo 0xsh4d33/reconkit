@@ -50,9 +50,9 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	// Deduplicate: subdomain/domain by hostname, IP by IP
 	seen := map[string]bool{}
 	for _, a := range assets {
-		target := a.Hostname
+		target := a.IP
 		if target == "" {
-			target = a.IP
+			target = a.Hostname
 		}
 		if target == "" || seen[target] {
 			continue
