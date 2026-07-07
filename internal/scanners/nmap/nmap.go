@@ -15,7 +15,6 @@ import (
 	"github.com/blackfly/reconkit/internal/config"
 	"github.com/blackfly/reconkit/internal/models"
 	"github.com/blackfly/reconkit/internal/repository"
-	"github.com/blackfly/reconkit/internal/workers"
 )
 
 type Scanner struct {
@@ -39,64 +38,74 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		return nil
 	}
 
-	log.Printf("[nmap] scanning %d IPs (workers: %d)", len(assets), s.cfg.Workers.Nmap)
-
-	pool := workers.New(s.cfg.Workers.Nmap, func(a models.Asset) error {
-		return s.scanAsset(ctx, scanID, a)
-	})
-	pool.Start()
-	for _, a := range assets {
-		pool.Submit(a)
+	// Build IP list and asset map
+	ips := make([]string, len(assets))
+	assetByIP := make(map[string]models.Asset)
+	for i, a := range assets {
+		ips[i] = a.IP
+		assetByIP[a.IP] = a
 	}
-	errs := pool.Wait()
-	if len(errs) > 0 {
-		for _, e := range errs {
-			log.Printf("[nmap] error: %v", e)
-		}
-	}
-	return nil
-}
 
-func (s *Scanner) scanAsset(ctx context.Context, scanID int64, asset models.Asset) error {
+	log.Printf("[nmap] scanning %d IPs", len(ips))
+
+	// Build output paths
 	ts := time.Now().Format("20060102_150405")
 	outDir := filepath.Join(s.cfg.Paths.ScanResults, "nmap")
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return err
 	}
-	outBase := filepath.Join(outDir, fmt.Sprintf("%s_%s_%d", asset.IP, ts, asset.ID))
+	outBase := filepath.Join(outDir, fmt.Sprintf("batch_%s_%d", ts, scanID))
+	outXML := outBase + ".xml"
+	outNmap := outBase + ".nmap"
 
+	// Build nmap command
 	args := append([]string{}, s.cfg.Nmap.Arguments...)
-	args = append(args, asset.IP, "-oX", outBase+".xml", "-oN", outBase+".nmap")
+	args = append(args, ips...)
+	args = append(args, "-oX", outXML, "-oN", outNmap)
 
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "nmap", args...) // #nosec G204 -- intentional: nmap is the tool this scanner wraps, exec.CommandContext avoids shell injection
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("nmap %s: %w — %s", asset.IP, err, stderr.String())
+		return fmt.Errorf("nmap batch: %w — %s", err, stderr.String())
 	}
 
-	ports, err := parseXML(outBase + ".xml")
+	// Parse XML batch
+	portsByIP, err := parseXMLBatch(outXML)
 	if err != nil {
-		return fmt.Errorf("nmap parse %s: %w", asset.IP, err)
+		log.Printf("[nmap] parse batch XML: %v", err)
 	}
 
-	for _, p := range ports {
-		p.AssetID = asset.ID
-		if err := s.store.InsertPort(&p); err != nil {
-			log.Printf("[nmap] insert port %d for asset %d: %v", p.Port, asset.ID, err)
+	// Insert all ports
+	totalPorts := 0
+	for ip, ports := range portsByIP {
+		asset, exists := assetByIP[ip]
+		if !exists {
+			log.Printf("[nmap] IP %s not in asset map", ip)
+			continue
+		}
+		for _, p := range ports {
+			p.AssetID = asset.ID
+			if err := s.store.InsertPort(&p); err != nil {
+				log.Printf("[nmap] insert port %d/%s for %s: %v", p.Port, p.Protocol, ip, err)
+				continue
+			}
+			totalPorts++
 		}
 	}
 
+	// Store raw result
 	_ = s.store.InsertRawResult(&models.RawResult{
-		AssetID:    asset.ID,
+		AssetID:    assets[0].ID,
 		Scanner:    "nmap",
-		OutputFile: outBase + ".xml",
+		OutputFile: outXML,
 	})
 
-	log.Printf("[nmap] %s: %d open ports", asset.IP, len(ports))
+	log.Printf("[nmap] inserted %d ports across %d IPs", totalPorts, len(portsByIP))
 	return nil
 }
+
 
 // ── XML parsing ───────────────────────────────────────────────────────────────
 
@@ -141,7 +150,7 @@ type nmapService struct {
 	Version string `xml:"version,attr"`
 }
 
-func parseXML(path string) ([]models.Port, error) {
+func parseXMLBatch(path string) (map[string][]models.Port, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is internally generated from scan output dir
 	if err != nil {
 		return nil, err
@@ -152,11 +161,24 @@ func parseXML(path string) ([]models.Port, error) {
 		return nil, err
 	}
 
-	var ports []models.Port
+	portsByIP := make(map[string][]models.Port)
 	for _, host := range run.Hosts {
 		if host.Status.State != "up" {
 			continue
 		}
+
+		ip := ""
+		for _, addr := range host.Addresses {
+			if addr.AddrType == "ipv4" || addr.AddrType == "ipv6" {
+				ip = addr.Addr
+				break
+			}
+		}
+		if ip == "" {
+			continue
+		}
+
+		var ports []models.Port
 		for _, p := range host.Ports.Ports {
 			if !strings.EqualFold(p.State.State, "open") {
 				continue
@@ -170,6 +192,9 @@ func parseXML(path string) ([]models.Port, error) {
 				Version:  p.Service.Version,
 			})
 		}
+		if len(ports) > 0 {
+			portsByIP[ip] = ports
+		}
 	}
-	return ports, nil
+	return portsByIP, nil
 }
