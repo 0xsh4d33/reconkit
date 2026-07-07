@@ -38,12 +38,13 @@ RUN curl -fsSL "https://github.com/projectdiscovery/dnsx/releases/download/v${DN
 # ── Stage 3: Final image ──────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-# System packages: nmap + tools
+# System packages: nmap + tools + chromium for httpx -ss
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nmap \
         git \
         ca-certificates \
         curl \
+        chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # ProjectDiscovery binaries from stage 2
