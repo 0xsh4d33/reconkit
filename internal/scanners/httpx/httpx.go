@@ -40,6 +40,12 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		return nil
 	}
 
+	// Build dynamic target list: use nmap open ports if available, else fallback to default ports
+	defaultPorts := make([]string, len(s.cfg.HTTPx.Ports))
+	for i, p := range s.cfg.HTTPx.Ports {
+		defaultPorts[i] = strconv.Itoa(p)
+	}
+
 	// Write target list to temp file
 	tmp, err := os.CreateTemp("", "reconkit-httpx-*.txt")
 	if err != nil {
@@ -47,20 +53,62 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	}
 	defer os.Remove(tmp.Name())
 
-	// Deduplicate: subdomain/domain by hostname, IP by IP
 	seen := map[string]bool{}
+	targetCount := 0
+
 	for _, a := range assets {
 		target := a.IP
 		if target == "" {
 			target = a.Hostname
 		}
-		if target == "" || seen[target] {
+		if target == "" {
 			continue
 		}
-		seen[target] = true
-		fmt.Fprintln(tmp, target)
+
+		// For IP assets, query nmap results for open ports
+		if a.IP != "" && a.AssetType == "ip" {
+			ports, err := s.store.GetPortsByAsset(a.ID)
+			if err != nil {
+				log.Printf("[httpx] get ports for %s: %v", a.IP, err)
+				continue
+			}
+
+			// Write targets for each open port
+			portsFound := 0
+			for _, p := range ports {
+				if p.State != "open" {
+					continue
+				}
+				t := fmt.Sprintf("%s:%d", a.IP, p.Port)
+				if !seen[t] {
+					seen[t] = true
+					fmt.Fprintln(tmp, t)
+					portsFound++
+					targetCount++
+				}
+			}
+			if portsFound > 0 {
+				log.Printf("[httpx] %s: found %d open ports from nmap", a.IP, portsFound)
+			}
+			continue
+		}
+
+		// For non-IP assets (domains/subdomains), use default port list
+		for _, port := range defaultPorts {
+			t := fmt.Sprintf("%s:%s", target, port)
+			if !seen[t] {
+				seen[t] = true
+				fmt.Fprintln(tmp, t)
+				targetCount++
+			}
+		}
 	}
 	_ = tmp.Close()
+
+	if targetCount == 0 {
+		log.Println("[httpx] no targets to probe (no open ports from nmap, no domains)")
+		return nil
+	}
 
 	// Build output paths
 	ts := time.Now().Format("20060102_150405")
@@ -70,15 +118,8 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 	}
 	jsonOut := filepath.Join(outDir, fmt.Sprintf("httpx_%s_%d.json", ts, scanID))
 
-	// Build port list
-	ports := make([]string, len(s.cfg.HTTPx.Ports))
-	for i, p := range s.cfg.HTTPx.Ports {
-		ports[i] = strconv.Itoa(p)
-	}
-
 	args := []string{
 		"-l", tmp.Name(),
-		"-ports", strings.Join(ports, ","),
 		"-ss",
 		"-esb",
 		"-ehb",
@@ -95,7 +136,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		"-silent",
 	}
 
-	log.Printf("[httpx] probing %d targets", len(seen))
+	log.Printf("[httpx] probing %d targets (from nmap + default ports)", targetCount)
 
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "httpx", args...) // #nosec G204 -- intentional: httpx is the tool this scanner wraps, exec.CommandContext avoids shell injection

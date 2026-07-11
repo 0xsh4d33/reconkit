@@ -29,7 +29,6 @@ type DatabaseConfig struct {
 type WorkersConfig struct {
 	Discovery int `yaml:"discovery"`
 	Nmap      int `yaml:"nmap"`
-	HTTPx     int `yaml:"httpx"`
 }
 
 type NmapConfig struct {
@@ -75,9 +74,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Workers.Nmap == 0 {
 		c.Workers.Nmap = 10
-	}
-	if c.Workers.HTTPx == 0 {
-		c.Workers.HTTPx = 50
 	}
 	if c.Paths.ScanResults == "" {
 		c.Paths.ScanResults = "./scan_results"

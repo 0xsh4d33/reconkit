@@ -4,7 +4,6 @@ database:
 workers:
   discovery: 20
   nmap: 1
-  httpx: 10
 
 nmap:
   arguments:
