@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -191,7 +194,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 
 		// Handle screenshot if present
 		if screenshotPath != "" {
-			destPath := filepath.Join(s.cfg.Paths.Screenshots, fmt.Sprintf("%s_%d.png", assetHost, asset.ID))
+			destPath := filepath.Join(s.cfg.Paths.Screenshots, screenshotFilename(assetHost, asset.ID, ws.URL))
 			if err := copyFile(screenshotPath, destPath); err != nil {
 				log.Printf("[httpx] copy screenshot: %v", err)
 				continue
@@ -238,24 +241,24 @@ func buildHostMap(assets []models.Asset) map[string]*models.Asset {
 
 // httpxEntry covers both old and new httpx JSON field names.
 type httpxEntry struct {
-	URL              string   `json:"url"`
-	Input            string   `json:"input"`
-	Host             string   `json:"host"`
-	Port             string   `json:"port"`
-	Title            string   `json:"title"`
-	StatusCode       int      `json:"status_code"`
-	StatusCodeV2     int      `json:"status-code"`
-	WebServer        string   `json:"webserver"`
-	HostIP           string   `json:"host_ip"`
-	A                []string `json:"a"`
-	Scheme           string   `json:"scheme"`
-	FaviconHash      string   `json:"favicon_hash"`
-	FaviconHashV2    string   `json:"favicon-hash"`
-	Tech             []string `json:"tech"`
-	Technologies     []string `json:"technologies"`
-	Failed           bool     `json:"failed"`
-	ScreenshotPath   string   `json:"screenshot_path"`
-	ScreenshotPathRel string  `json:"screenshot_path_rel"`
+	URL               string   `json:"url"`
+	Input             string   `json:"input"`
+	Host              string   `json:"host"`
+	Port              string   `json:"port"`
+	Title             string   `json:"title"`
+	StatusCode        int      `json:"status_code"`
+	StatusCodeV2      int      `json:"status-code"`
+	WebServer         string   `json:"webserver"`
+	HostIP            string   `json:"host_ip"`
+	A                 []string `json:"a"`
+	Scheme            string   `json:"scheme"`
+	FaviconHash       string   `json:"favicon_hash"`
+	FaviconHashV2     string   `json:"favicon-hash"`
+	Tech              []string `json:"tech"`
+	Technologies      []string `json:"technologies"`
+	Failed            bool     `json:"failed"`
+	ScreenshotPath    string   `json:"screenshot_path"`
+	ScreenshotPathRel string   `json:"screenshot_path_rel"`
 }
 
 func parseLine(line string) (*models.WebService, string, string, error) {
@@ -306,13 +309,82 @@ func parseLine(line string) (*models.WebService, string, string, error) {
 	return ws, assetHost, e.ScreenshotPath, nil
 }
 
+func screenshotFilename(assetHost string, assetID int64, rawURL string) string {
+	sum := sha1.Sum([]byte(rawURL))
+	return fmt.Sprintf("%s_%d_%s.png", sanitizeFilename(assetHost), assetID, hex.EncodeToString(sum[:])[:10])
+}
+
+func sanitizeFilename(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src) // #nosec G304 -- src is internally generated from httpx output
+
+	if err := waitForStableNonEmptyFile(src, 3*time.Second); err != nil {
+		return err
+	}
+
+	in, err := os.Open(src) // #nosec G304 -- src is internally generated from httpx output
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0o600) // #nosec G306 G703 -- dst is assembled from controlled base path
+	defer in.Close()
+
+	tmp, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmp, in); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := waitForStableNonEmptyFile(tmpName, time.Second); err != nil {
+		return fmt.Errorf("copied screenshot invalid: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, dst)
+}
+
+func waitForStableNonEmptyFile(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastSize int64 = -1
+	for {
+		info, err := os.Stat(path) // #nosec G304 -- path is internally generated from httpx output
+		if err == nil && info.Size() > 0 {
+			if info.Size() == lastSize {
+				return nil
+			}
+			lastSize = info.Size()
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("%s is empty or still changing", path)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
