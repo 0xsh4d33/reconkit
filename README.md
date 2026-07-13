@@ -2,20 +2,20 @@
 
 Modular external recon pipeline for bug bounty and penetration testing.
 Discovers subdomains, resolves IPs, port-scans, probes HTTP, screenshots web services,
-and generates reports — all stored in SQLite so every scan is auditable.
+tracks target history, and generates reports — all stored in SQLite so every scan is auditable.
 
 Single binary, two modes:
 
 | Mode | Use case |
 |------|---------|
 | **CLI** | Scripted scans, CI pipelines, headless Docker, automation |
-| **Web** | Interactive use, live progress, asset browser, diff viewer |
+| **Web** | Interactive use, live progress, target history, asset browser, diff viewer |
 
 ---
 
 ## Quick Start — Docker (web UI)
 
-Docker is designed for the **web interface only**. It bundles all tools (nmap, httpx, subfinder, dnsx, EyeWitness + Chromium) so you don't install anything on the host.
+Docker is designed for the **web interface only**. It bundles all tools (nmap, httpx, subfinder, dnsx, dig/dnsutils, Chromium) so you don't install anything on the host.
 
 ```bash
 # Build the image (~1.5 GB, first time takes a few minutes)
@@ -39,12 +39,11 @@ For CLI usage — build the native binary instead (see below). Running `docker c
 
 ## Quick Start — CLI (native binary)
 
-Requires nmap, httpx, subfinder, dnsx on PATH; EyeWitness configured via `config.yaml`.
+Requires nmap, httpx, subfinder, dnsx, and dig on PATH.
 
 ```bash
 go build -o recon ./cmd/recon/
 cp config.example.yaml config.yaml
-# edit eyewitness.path + eyewitness.python
 
 # CLI
 ./recon scan -targets targets.yaml -profile full
@@ -55,6 +54,7 @@ cp config.example.yaml config.yaml
 # Web
 ./recon web                      # http://127.0.0.1:8080
 ./recon web -addr 0.0.0.0:9090   # custom bind address
+./recon web -debug               # verbose pipeline logging
 ```
 
 ---
@@ -75,6 +75,7 @@ cp config.example.yaml config.yaml
 ./recon diff   -scan-id1 2 -scan-id2 3
 ./recon scans
 ./recon web    -addr 127.0.0.1:8080
+./recon web    -debug
 ```
 
 ---
@@ -84,6 +85,8 @@ cp config.example.yaml config.yaml
 Start with `./recon web` then open `http://127.0.0.1:8080`.
 
 **Pages:**
+- `/targets` — tracked submitted targets with first/last scan metadata, duration, profile, asset counts, ports, and web service counts
+- `/targets/{id}` — target detail with matching assets, resolved DNS names, open ports, web services, and technology counts
 - `/scans` — scan list + new scan form with per-scan tool config
 - `/scans/{id}` — scan detail with live SSE progress, phase stepper, asset table
 - `/scans/{id}/assets/{aid}` — asset detail: ports, web services, screenshots, findings
@@ -97,8 +100,8 @@ GET  /api/scans/{id}/events  SSE stream (live scan events)
 POST /api/scans/{id}/cancel  cancel running scan
 ```
 
-Per-scan overrides available in the form: nmap arguments, parallel workers, httpx threads/ports,
-enable/disable individual scanners (nmap, httpx, eyewitness).
+Per-scan overrides available in the form: nmap arguments, httpx threads/ports,
+and enable/disable controls for nmap and httpx.
 
 ---
 
@@ -127,8 +130,6 @@ database:
 workers:
   discovery: 20
   nmap: 10
-  httpx: 50
-  eyewitness: 5
 
 nmap:
   arguments: ["-sV", "--open", "-T4"]
@@ -136,11 +137,6 @@ nmap:
 httpx:
   threads: 50
   ports: [80, 443, 8080, 8443, 8000, 8888]
-
-eyewitness:
-  enabled: true
-  path: /path/to/EyeWitness
-  python: /path/to/EyeWitness/eyewitness-venv/bin/python
 
 subfinder:
   enabled: true
@@ -165,7 +161,7 @@ web:
 | `httpx` | `go install github.com/projectdiscovery/httpx/cmd/httpx@latest` |
 | `subfinder` | `go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest` |
 | `dnsx` | `go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest` |
-| EyeWitness | [RedSiege/EyeWitness](https://github.com/RedSiege/EyeWitness) — run `setup.sh`, set paths in config |
+| `dig` | `apt install dnsutils` / `brew install bind` |
 
 Docker handles all of the above automatically.
 
@@ -174,20 +170,20 @@ Docker handles all of the above automatically.
 ## Pipeline
 
 ```
-Domains  → subfinder → subdomains
-Subdomains → dnsx → IP resolution
-CIDRs    → expand → reverse DNS
-              ↓
-       INSERT assets (SQLite)
-              ↓
-     nmap  (per-IP, worker pool)
-              ↓
-     httpx (batch HTTP probe + tech detect)
-              ↓
-     eyewitness (batch screenshots)
-              ↓
-     HTML + JSON reports from DB
+Domains    → subfinder → subdomains
+Subdomains → dnsx      → IP resolution
+CIDRs/IPs  → expand    → reverse DNS via dig
+                ↓
+       link submitted targets + insert assets (SQLite)
+                ↓
+       nmap  (batch scan over IP assets)
+                ↓
+       httpx (batch HTTP probe, screenshots, tech detect)
+                ↓
+       HTML + JSON reports from DB
 ```
+
+For domain and subdomain assets, httpx probes the configured `httpx.ports`. For IP assets, httpx probes open ports found by nmap.
 
 ---
 
@@ -197,11 +193,11 @@ CIDRs    → expand → reverse DNS
 cmd/recon/               — CLI entrypoint (scan, report, diff, scans, web)
 internal/
   config/                — YAML config loader + defaults
-  models/                — Asset, Port, WebService, Screenshot, Finding, Scan
+  models/                — Asset, Port, WebService, Screenshot, Finding, Scan, ScanTarget
   database/              — SQLite + WAL mode + embedded migrations
-  repository/            — All DB CRUD + stats + diff queries
+  repository/            — DB CRUD, target history, stats, diff queries
   discovery/             — subfinder, dnsx, rdns, CIDR expander
-  scanners/              — nmap, httpx, eyewitness (Scanner interface)
+  scanners/              — nmap, httpx (Scanner interface)
   services/              — Pipeline orchestrator + input validation
   workers/               — Generic concurrency pool
   reporters/             — HTML + JSON report generators
@@ -209,9 +205,9 @@ internal/
 data/                    — recon.db (gitignored)
 scan_results/            — raw nmap XML, httpx JSONL
 reports/                 — generated HTML + JSON reports
-screenshots/             — EyeWitness screenshots
+screenshots/             — httpx screenshots
 Dockerfile               — multi-stage image (all tools bundled)
-docker-compose.yml       — CLI service + web service (--profile web)
+docker-compose.yml       — web service with persistent volumes
 config.docker.yaml       — config baked into Docker image
 ```
 
