@@ -1,0 +1,80 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit - Targets{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">targets</span>
+  <span class="page-sub">{{.TotalTargets}} tracked</span>
+</div>
+
+{{if .Targets}}
+<div class="card">
+  <div class="card-body" style="padding-bottom:0">
+    <div class="toolbar">
+      <input type="text" id="target-filter" placeholder="filter targets..." oninput="filterTargets()">
+      <span class="count" id="target-count">{{len .Targets}} targets</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="targets-table">
+      <thead>
+        <tr>
+          <th>target</th>
+          <th>type</th>
+          <th>status</th>
+          <th>profile</th>
+          <th>first seen</th>
+          <th>last scanned</th>
+          <th>duration</th>
+          <th>assets</th>
+          <th>ips</th>
+          <th>ports</th>
+          <th>web</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Targets}}
+        <tr>
+          <td><a href="/targets/{{.Target.ID}}">{{.Target.Value}}</a></td>
+          <td><span class="badge badge-type">{{.Target.TargetType}}</span></td>
+          <td>
+            {{if .Target.LastScanStatus}}
+            <span class="badge {{statusClass .Target.LastScanStatus}}">
+              {{statusIcon .Target.LastScanStatus}} {{.Target.LastScanStatus}}
+            </span>
+            {{else}}
+            <span class="badge badge-unknown">never</span>
+            {{end}}
+          </td>
+          <td>{{if .LastScanProfile}}{{.LastScanProfile}}{{else}}-{{end}}</td>
+          <td class="td-mono">{{.Target.FirstSeen.Format "2006-01-02 15:04"}}</td>
+          <td class="td-mono">{{if .Target.LastScannedAt}}{{.Target.LastScannedAt.Format "2006-01-02 15:04"}}{{else}}-{{end}}</td>
+          <td class="td-mono">{{formatDuration .LastScanStarted .LastScanEnded}}</td>
+          <td class="td-mono">{{.AssetCount}}</td>
+          <td class="td-mono">{{.IPCount}}</td>
+          <td class="td-mono">{{.OpenPortCount}}</td>
+          <td class="td-mono">{{.WebServiceCount}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="empty">no targets tracked yet - start a scan to populate target history</div>
+{{end}}
+
+<script>
+function filterTargets() {
+  const q = document.getElementById('target-filter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#targets-table tbody tr').forEach(row => {
+    const show = row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('target-count').textContent = visible + ' targets';
+}
+</script>
+{{end}}

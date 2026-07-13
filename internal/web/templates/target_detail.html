@@ -1,0 +1,125 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit - {{.Detail.Target.Value}}{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">{{.Detail.Target.Value}}</span>
+  <span class="badge badge-type">{{.Detail.Target.TargetType}}</span>
+  {{if .Detail.Target.LastScanStatus}}
+  <span class="badge {{statusClass .Detail.Target.LastScanStatus}}">
+    {{statusIcon .Detail.Target.LastScanStatus}} {{.Detail.Target.LastScanStatus}}
+  </span>
+  {{end}}
+  <div class="ml-auto" style="display:flex;gap:8px">
+    {{if .Detail.Scan}}<a href="/scans/{{.Detail.Scan.ID}}" class="btn btn-ghost btn-sm">scan #{{.Detail.Scan.ID}}</a>{{end}}
+    <a href="/targets" class="btn btn-ghost btn-sm">back</a>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat">
+    <div class="stat-val">{{len .Detail.Assets}}</div>
+    <div class="stat-lbl">assets</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">{{if .Detail.Scan}}{{.Detail.Scan.Profile}}{{else}}-{{end}}</div>
+    <div class="stat-lbl">profile</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" style="font-size:16px">{{.Detail.Target.FirstSeen.Format "2006-01-02"}}</div>
+    <div class="stat-lbl">first seen</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" style="font-size:16px">{{if .Detail.Target.LastScannedAt}}{{.Detail.Target.LastScannedAt.Format "2006-01-02 15:04"}}{{else}}-{{end}}</div>
+    <div class="stat-lbl">last scanned</div>
+  </div>
+  {{range .TechCounts}}
+  <div class="stat">
+    <div class="stat-val">{{.Count}}</div>
+    <div class="stat-lbl">{{.Name}}</div>
+  </div>
+  {{end}}
+</div>
+
+{{if .Detail.Scan}}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">latest scan</span>
+    <span class="page-sub">duration: {{formatDuration .Detail.Scan.StartedAt .Detail.Scan.FinishedAt}}</span>
+  </div>
+  <div class="card-body" style="padding-bottom:0">
+    <div class="toolbar">
+      <input type="text" id="asset-filter" placeholder="filter assets..." oninput="filterAssets()">
+      <span class="count" id="asset-count">{{len .Detail.Assets}} assets</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="target-assets-table">
+      <thead>
+        <tr>
+          <th>asset</th>
+          <th>type</th>
+          <th>ip</th>
+          <th>dns name</th>
+          <th>open ports</th>
+          <th>web services</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Detail.Assets}}
+        <tr>
+          <td><a href="/scans/{{$.Detail.Scan.ID}}/assets/{{.Asset.ID}}">{{.Asset.Name}}</a></td>
+          <td><span class="badge badge-type">{{.Asset.AssetType}}</span></td>
+          <td class="td-mono">{{if .Asset.IP}}{{.Asset.IP}}{{else}}-{{end}}</td>
+          <td>{{if .Asset.Hostname}}{{.Asset.Hostname}}{{else}}-{{end}}</td>
+          <td>
+            {{if .Ports}}
+            <div class="tags">
+              {{range .Ports}}<span class="tag">{{.Port}}/{{.Protocol}} {{.Service}}</span>{{end}}
+            </div>
+            {{else}}
+            <span class="page-sub">-</span>
+            {{end}}
+          </td>
+          <td>
+            {{if .WebServices}}
+            {{range .WebServices}}
+            <div style="margin-bottom:7px">
+              <a href="{{.URL}}" target="_blank" rel="noopener">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+              {{if .Technologies}}
+              <div class="tags" style="margin-top:3px">
+                {{range splitTech .Technologies}}<span class="tag">{{.}}</span>{{end}}
+              </div>
+              {{end}}
+            </div>
+            {{end}}
+            {{else}}
+            <span class="page-sub">-</span>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="6" class="empty">no matching assets found in the latest scan</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="empty">this target has not completed a scan yet</div>
+{{end}}
+
+<script>
+function filterAssets() {
+  const q = document.getElementById('asset-filter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#target-assets-table tbody tr').forEach(row => {
+    const show = row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('asset-count').textContent = visible + ' assets';
+}
+</script>
+{{end}}

@@ -260,9 +260,11 @@ func cmdWeb(args []string) {
 	fs := flag.NewFlagSet("web", flag.ExitOnError)
 	cfgPath := fs.String("config", defaultConfigPath, defaultConfigPathMsg)
 	addrFlag := fs.String("addr", "", "override listen address (e.g. 0.0.0.0:9090)")
+	debugFlag := fs.Bool("debug", false, "enable verbose pipeline logging")
 	_ = fs.Parse(args)
 
 	cfg := mustLoadConfig(*cfgPath)
+	cfg.Debug = *debugFlag
 	if *addrFlag != "" {
 		// parse host:port override
 		parts := strings.SplitN(*addrFlag, ":", 2)
@@ -351,4 +353,3 @@ func mustReadLines(path string) []string {
 	}
 	return lines
 }
-

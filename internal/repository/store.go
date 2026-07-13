@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/blackfly/reconkit/internal/database"
@@ -31,11 +32,30 @@ func (s *Store) CreateScan(profile string) (int64, error) {
 }
 
 func (s *Store) FinalizeScan(id int64, status models.ScanStatus) error {
-	_, err := s.db.Exec(
+	finishedAt := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
 		`UPDATE scans SET finished_at=?, status=? WHERE id=?`,
-		time.Now().UTC(), status, id,
-	)
-	return err
+		finishedAt, status, id,
+	); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(
+		`UPDATE scan_targets
+		 SET last_scan_id=?, last_scanned_at=?, last_scan_status=?
+		 WHERE id IN (SELECT target_id FROM scan_target_links WHERE scan_id=?)`,
+		id, finishedAt, status, id,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) GetScan(id int64) (*models.Scan, error) {
@@ -81,6 +101,304 @@ func scanRow(r scanner) (*models.Scan, error) {
 	return &sc, nil
 }
 
+// ── Scan Targets ─────────────────────────────────────────────────────────────
+
+func (s *Store) LinkScanTargets(scanID int64, targets []models.ScanTarget) error {
+	for _, target := range targets {
+		if target.TargetType == "" || target.Value == "" {
+			continue
+		}
+		targetID, err := s.upsertScanTarget(target)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(
+			`INSERT OR IGNORE INTO scan_target_links (scan_id, target_id) VALUES (?, ?)`,
+			scanID, targetID,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) upsertScanTarget(target models.ScanTarget) (int64, error) {
+	now := time.Now().UTC()
+	res, err := s.db.Exec(
+		`INSERT OR IGNORE INTO scan_targets (target_type, value, first_seen)
+		 VALUES (?, ?, ?)`,
+		target.TargetType, target.Value, now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows > 0 {
+		return res.LastInsertId()
+	}
+
+	var id int64
+	err = s.db.QueryRow(
+		`SELECT id FROM scan_targets WHERE target_type=? AND value=?`,
+		target.TargetType, target.Value,
+	).Scan(&id)
+	return id, err
+}
+
+func (s *Store) GetScanTargets() ([]models.ScanTarget, error) {
+	rows, err := s.db.Query(
+		`SELECT id, target_type, value, first_seen, COALESCE(last_scan_id, 0), last_scanned_at, last_scan_status
+		 FROM scan_targets ORDER BY target_type, value`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTargets(rows)
+}
+
+func scanTargets(rows *sql.Rows) ([]models.ScanTarget, error) {
+	var targets []models.ScanTarget
+	for rows.Next() {
+		var target models.ScanTarget
+		var lastScannedAt sql.NullTime
+		if err := rows.Scan(
+			&target.ID,
+			&target.TargetType,
+			&target.Value,
+			&target.FirstSeen,
+			&target.LastScanID,
+			&lastScannedAt,
+			&target.LastScanStatus,
+		); err != nil {
+			return nil, err
+		}
+		if lastScannedAt.Valid {
+			target.LastScannedAt = &lastScannedAt.Time
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
+}
+
+type TargetSummary struct {
+	Target          models.ScanTarget
+	LastScanProfile string
+	LastScanStarted *time.Time
+	LastScanEnded   *time.Time
+	AssetCount      int
+	IPCount         int
+	OpenPortCount   int
+	WebServiceCount int
+}
+
+type TargetAssetDetail struct {
+	Asset       models.Asset
+	Ports       []models.Port
+	WebServices []models.WebService
+}
+
+type TargetDetail struct {
+	Target models.ScanTarget
+	Scan   *models.Scan
+	Assets []TargetAssetDetail
+}
+
+func (s *Store) ListTargetSummaries() ([]TargetSummary, error) {
+	rows, err := s.db.Query(
+		`SELECT
+		    st.id, st.target_type, st.value, st.first_seen, COALESCE(st.last_scan_id, 0), st.last_scanned_at, st.last_scan_status,
+		    COALESCE(sc.profile, ''),
+		    sc.started_at,
+		    sc.finished_at
+		 FROM scan_targets st
+		 LEFT JOIN scans sc ON sc.id = st.last_scan_id
+		 ORDER BY st.last_scanned_at DESC, st.target_type, st.value`,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var summaries []TargetSummary
+	for rows.Next() {
+		var summary TargetSummary
+		var lastScannedAt, startedAt, finishedAt sql.NullTime
+		if err := rows.Scan(
+			&summary.Target.ID,
+			&summary.Target.TargetType,
+			&summary.Target.Value,
+			&summary.Target.FirstSeen,
+			&summary.Target.LastScanID,
+			&lastScannedAt,
+			&summary.Target.LastScanStatus,
+			&summary.LastScanProfile,
+			&startedAt,
+			&finishedAt,
+		); err != nil {
+			return nil, err
+		}
+		if lastScannedAt.Valid {
+			summary.Target.LastScannedAt = &lastScannedAt.Time
+		}
+		if startedAt.Valid {
+			summary.LastScanStarted = &startedAt.Time
+		}
+		if finishedAt.Valid {
+			summary.LastScanEnded = &finishedAt.Time
+		}
+		summaries = append(summaries, summary)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range summaries {
+		if summaries[i].Target.LastScanID == 0 {
+			continue
+		}
+		if err := s.populateTargetSummaryCounts(&summaries[i]); err != nil {
+			return nil, err
+		}
+	}
+	return summaries, nil
+}
+
+func (s *Store) populateTargetSummaryCounts(summary *TargetSummary) error {
+	assets, err := s.GetAssetsByScan(summary.Target.LastScanID)
+	if err != nil {
+		return err
+	}
+	for _, asset := range assets {
+		if !assetMatchesTarget(asset, summary.Target) {
+			continue
+		}
+		summary.AssetCount++
+		if asset.AssetType == models.AssetTypeIP {
+			summary.IPCount++
+		}
+		ports, err := s.GetPortsByAsset(asset.ID)
+		if err != nil {
+			return err
+		}
+		webServices, err := s.GetWebServicesByAsset(asset.ID)
+		if err != nil {
+			return err
+		}
+		summary.OpenPortCount += len(ports)
+		summary.WebServiceCount += len(webServices)
+	}
+	return nil
+}
+
+func (s *Store) GetTargetDetail(targetID int64) (*TargetDetail, error) {
+	target, err := s.getScanTarget(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &TargetDetail{Target: *target}
+	if target.LastScanID == 0 {
+		return detail, nil
+	}
+
+	scan, err := s.GetScan(target.LastScanID)
+	if err != nil {
+		return nil, err
+	}
+	detail.Scan = scan
+
+	assets, err := s.GetAssetsByScan(target.LastScanID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, asset := range assets {
+		if !assetMatchesTarget(asset, *target) {
+			continue
+		}
+		ports, err := s.GetPortsByAsset(asset.ID)
+		if err != nil {
+			return nil, err
+		}
+		webServices, err := s.GetWebServicesByAsset(asset.ID)
+		if err != nil {
+			return nil, err
+		}
+		detail.Assets = append(detail.Assets, TargetAssetDetail{
+			Asset:       asset,
+			Ports:       ports,
+			WebServices: webServices,
+		})
+	}
+
+	return detail, nil
+}
+
+func (s *Store) getScanTarget(targetID int64) (*models.ScanTarget, error) {
+	row := s.db.QueryRow(
+		`SELECT id, target_type, value, first_seen, COALESCE(last_scan_id, 0), last_scanned_at, last_scan_status
+		 FROM scan_targets WHERE id=?`,
+		targetID,
+	)
+	var target models.ScanTarget
+	var lastScannedAt sql.NullTime
+	if err := row.Scan(
+		&target.ID,
+		&target.TargetType,
+		&target.Value,
+		&target.FirstSeen,
+		&target.LastScanID,
+		&lastScannedAt,
+		&target.LastScanStatus,
+	); err != nil {
+		return nil, err
+	}
+	if lastScannedAt.Valid {
+		target.LastScannedAt = &lastScannedAt.Time
+	}
+	return &target, nil
+}
+
+func assetMatchesTarget(asset models.Asset, target models.ScanTarget) bool {
+	switch target.TargetType {
+	case models.TargetTypeDomain:
+		return asset.AssetType == models.AssetTypeDomain ||
+			asset.AssetType == models.AssetTypeSubdomain ||
+			asset.Hostname == target.Value ||
+			hasDomainSuffix(asset.Name, target.Value) ||
+			hasDomainSuffix(asset.Hostname, target.Value)
+	case models.TargetTypeIP:
+		return asset.IP == target.Value || asset.Name == target.Value
+	case models.TargetTypeCIDR:
+		return assetInCIDR(asset, target.Value)
+	default:
+		return false
+	}
+}
+
+func hasDomainSuffix(value, domain string) bool {
+	return value == domain || len(value) > len(domain) && value[len(value)-len(domain)-1:] == "."+domain
+}
+
+func assetInCIDR(asset models.Asset, cidr string) bool {
+	ipValue := asset.IP
+	if ipValue == "" {
+		ipValue = asset.Name
+	}
+	ip := net.ParseIP(ipValue)
+	if ip == nil {
+		return false
+	}
+	_, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	return network.Contains(ip)
+}
+
 // ── Assets ────────────────────────────────────────────────────────────────────
 
 func (s *Store) InsertAsset(a *models.Asset) error {
@@ -88,12 +406,15 @@ func (s *Store) InsertAsset(a *models.Asset) error {
 	a.FirstSeen = now
 	a.LastSeen = now
 	res, err := s.db.Exec(
-		`INSERT INTO assets (scan_id, asset_type, name, hostname, ip, first_seen, last_seen)
+		`INSERT OR IGNORE INTO assets (scan_id, asset_type, name, hostname, ip, first_seen, last_seen)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		a.ScanID, a.AssetType, a.Name, a.Hostname, a.IP, a.FirstSeen, a.LastSeen,
 	)
 	if err != nil {
 		return err
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return s.getExistingAssetID(a)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
@@ -101,6 +422,14 @@ func (s *Store) InsertAsset(a *models.Asset) error {
 	}
 	a.ID = id
 	return nil
+}
+
+func (s *Store) getExistingAssetID(a *models.Asset) error {
+	row := s.db.QueryRow(
+		`SELECT id, first_seen, last_seen FROM assets WHERE scan_id=? AND asset_type=? AND name=?`,
+		a.ScanID, a.AssetType, a.Name,
+	)
+	return row.Scan(&a.ID, &a.FirstSeen, &a.LastSeen)
 }
 
 func (s *Store) GetAssetsByScan(scanID int64) ([]models.Asset, error) {
@@ -242,22 +571,35 @@ func (s *Store) GetPortCountsByScan(scanID int64) (map[string]int, error) {
 
 func (s *Store) InsertWebService(ws *models.WebService) error {
 	res, err := s.db.Exec(
-		`INSERT INTO web_services (asset_id, url, title, status_code, scheme, technologies, favicon_hash)
+		`INSERT OR IGNORE INTO web_services (asset_id, url, title, status_code, scheme, technologies, favicon_hash)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		ws.AssetID, ws.URL, ws.Title, ws.StatusCode, ws.Scheme, ws.Technologies, ws.FaviconHash,
 	)
 	if err != nil {
 		return err
 	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return s.getExistingWebServiceID(ws)
+	}
 	id, _ := res.LastInsertId()
 	ws.ID = id
 	return nil
 }
 
+func (s *Store) getExistingWebServiceID(ws *models.WebService) error {
+	return s.db.QueryRow(
+		`SELECT id FROM web_services WHERE asset_id=? AND url=?`,
+		ws.AssetID, ws.URL,
+	).Scan(&ws.ID)
+}
+
 func (s *Store) GetWebServicesByAsset(assetID int64) ([]models.WebService, error) {
 	rows, err := s.db.Query(
-		`SELECT id, asset_id, url, title, status_code, scheme, technologies, favicon_hash
-		 FROM web_services WHERE asset_id=? ORDER BY url`,
+		`SELECT MIN(id), asset_id, url, title, status_code, scheme, technologies, favicon_hash
+		 FROM web_services
+		 WHERE asset_id=?
+		 GROUP BY asset_id, url
+		 ORDER BY url`,
 		assetID,
 	)
 	if err != nil {
@@ -269,10 +611,12 @@ func (s *Store) GetWebServicesByAsset(assetID int64) ([]models.WebService, error
 
 func (s *Store) GetWebServicesByScan(scanID int64) ([]models.WebService, error) {
 	rows, err := s.db.Query(
-		`SELECT ws.id, ws.asset_id, ws.url, ws.title, ws.status_code, ws.scheme, ws.technologies, ws.favicon_hash
+		`SELECT MIN(ws.id), ws.asset_id, ws.url, ws.title, ws.status_code, ws.scheme, ws.technologies, ws.favicon_hash
 		 FROM web_services ws
 		 JOIN assets a ON a.id = ws.asset_id
-		 WHERE a.scan_id=? ORDER BY ws.url`,
+		 WHERE a.scan_id=?
+		 GROUP BY ws.asset_id, ws.url
+		 ORDER BY ws.url`,
 		scanID,
 	)
 	if err != nil {

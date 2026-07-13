@@ -20,12 +20,30 @@ const (
 	ScanStatusCanceled ScanStatus = "canceled"
 )
 
+type TargetType string
+
+const (
+	TargetTypeDomain TargetType = "domain"
+	TargetTypeCIDR   TargetType = "cidr"
+	TargetTypeIP     TargetType = "ip"
+)
+
 type Scan struct {
 	ID         int64
 	StartedAt  time.Time
 	FinishedAt *time.Time
 	Profile    string
 	Status     ScanStatus
+}
+
+type ScanTarget struct {
+	ID             int64
+	TargetType     TargetType
+	Value          string
+	FirstSeen      time.Time
+	LastScanID     int64
+	LastScannedAt  *time.Time
+	LastScanStatus ScanStatus
 }
 
 type Asset struct {

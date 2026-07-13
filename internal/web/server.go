@@ -50,6 +50,8 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// UI
 	mux.HandleFunc("GET /{$}", s.handleRedirect)
+	mux.HandleFunc("GET /targets", s.handleListTargets)
+	mux.HandleFunc("GET /targets/{id}", s.handleTargetDetail)
 	mux.HandleFunc("GET /scans", s.handleListScans)
 	mux.HandleFunc("POST /scans", s.handleSubmitScan)
 	mux.HandleFunc("GET /scans/{id}", s.handleScanDetail)
@@ -92,7 +94,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 // pageBase holds fields required by base.html for every page.
 type pageBase struct {
-	Nav      string // active nav item: "scans" | "diff"
+	Nav      string // active nav item: "targets" | "scans" | "diff"
 	NavBadge string // optional right-side badge text (e.g. "2 running")
 }
 
@@ -219,6 +221,10 @@ func templateFuncs() template.FuncMap {
 		"splitTech": func(s string) []string {
 			if s == "" {
 				return nil
+			}
+			var jsonParts []string
+			if err := json.Unmarshal([]byte(s), &jsonParts); err == nil {
+				return jsonParts
 			}
 			var parts []string
 			for _, p := range strings.Split(s, ",") {

@@ -46,15 +46,9 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 		defaultPorts[i] = strconv.Itoa(p)
 	}
 
-	// Write target list to temp file
-	tmp, err := os.CreateTemp("", "reconkit-httpx-*.txt")
-	if err != nil {
-		return fmt.Errorf("httpx: tmp file: %w", err)
-	}
-	defer os.Remove(tmp.Name())
-
+	// Collect and deduplicate targets
 	seen := map[string]bool{}
-	targetCount := 0
+	var targets []string
 
 	for _, a := range assets {
 		target := a.IP
@@ -73,7 +67,7 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 				continue
 			}
 
-			// Write targets for each open port
+			// Collect targets for each open port
 			portsFound := 0
 			for _, p := range ports {
 				if p.State != "open" {
@@ -82,9 +76,8 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 				t := fmt.Sprintf("%s:%d", a.IP, p.Port)
 				if !seen[t] {
 					seen[t] = true
-					fmt.Fprintln(tmp, t)
+					targets = append(targets, t)
 					portsFound++
-					targetCount++
 				}
 			}
 			if portsFound > 0 {
@@ -98,12 +91,24 @@ func (s *Scanner) Run(ctx context.Context, scanID int64) error {
 			t := fmt.Sprintf("%s:%s", target, port)
 			if !seen[t] {
 				seen[t] = true
-				fmt.Fprintln(tmp, t)
-				targetCount++
+				targets = append(targets, t)
 			}
 		}
 	}
+
+	// Write deduplicated targets to temp file
+	tmp, err := os.CreateTemp("", "reconkit-httpx-*.txt")
+	if err != nil {
+		return fmt.Errorf("httpx: tmp file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	for _, t := range targets {
+		fmt.Fprintln(tmp, t)
+	}
 	_ = tmp.Close()
+
+	targetCount := len(targets)
 
 	if targetCount == 0 {
 		log.Println("[httpx] no targets to probe (no open ports from nmap, no domains)")

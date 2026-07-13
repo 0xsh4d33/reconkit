@@ -1,9 +1,12 @@
 package discovery
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log"
-	"net"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,9 +48,7 @@ func (r *RDNSResolver) Resolve(ctx context.Context, assets []models.Asset) []mod
 			defer func() { <-sem }()
 
 			ip := assets[i].IP
-			rctx, cancel := context.WithTimeout(ctx, r.timeout)
-			names, err := (&net.Resolver{}).LookupAddr(rctx, ip)
-			cancel()
+			names, err := lookupAddrWithDig(ctx, ip, r.timeout)
 
 			if r.debug {
 				if err != nil {
@@ -73,4 +74,35 @@ func (r *RDNSResolver) Resolve(ctx context.Context, assets []models.Asset) []mod
 		log.Printf("[debug][rdns] done")
 	}
 	return assets
+}
+
+func lookupAddrWithDig(ctx context.Context, ip string, timeout time.Duration) ([]string, error) {
+	digPath, err := exec.LookPath("dig")
+	if err != nil {
+		digPath = "/usr/bin/dig"
+	}
+
+	digCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(digCtx, digPath, "-x", ip, "+short", "+time=1", "+tries=1") // #nosec G204 -- direct exec of dig with IP argument, no shell
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("dig -x %s: %w: %s", ip, err, strings.TrimSpace(stderr.String()))
+	}
+
+	var names []string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		names = append(names, strings.TrimSuffix(name, "."))
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("dig -x %s returned no PTR records", ip)
+	}
+	return names, nil
 }

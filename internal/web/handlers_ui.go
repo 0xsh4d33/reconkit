@@ -1,9 +1,12 @@
 package web
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/blackfly/reconkit/internal/models"
 	"github.com/blackfly/reconkit/internal/repository"
@@ -11,6 +14,114 @@ import (
 
 func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/scans", http.StatusMovedPermanently)
+}
+
+// ── Target list ───────────────────────────────────────────────────────────────
+
+type targetsPageData struct {
+	pageBase
+	Targets      []repository.TargetSummary
+	TotalTargets int
+}
+
+func (s *Server) handleListTargets(w http.ResponseWriter, r *http.Request) {
+	targets, err := s.store.ListTargetSummaries()
+	if err != nil {
+		log.Printf("[web] list targets: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.renderTemplate(w, "targets", targetsPageData{
+		pageBase:     s.baseFor("targets"),
+		Targets:      targets,
+		TotalTargets: len(targets),
+	})
+}
+
+// ── Target detail ─────────────────────────────────────────────────────────────
+
+type targetDetailData struct {
+	pageBase
+	Detail     *repository.TargetDetail
+	TechCounts []techCount
+}
+
+type techCount struct {
+	Name  string
+	Count int
+}
+
+func (s *Server) handleTargetDetail(w http.ResponseWriter, r *http.Request) {
+	targetID, err := parseTargetID(r)
+	if err != nil {
+		http.Error(w, "invalid target ID", http.StatusBadRequest)
+		return
+	}
+
+	detail, err := s.store.GetTargetDetail(targetID)
+	if err != nil {
+		log.Printf("[web] get target detail: %v", err)
+		http.Error(w, "target not found", http.StatusNotFound)
+		return
+	}
+
+	s.renderTemplate(w, "target_detail", targetDetailData{
+		pageBase:   s.baseFor("targets"),
+		Detail:     detail,
+		TechCounts: buildTargetTechCounts(detail),
+	})
+}
+
+func buildTargetTechCounts(detail *repository.TargetDetail) []techCount {
+	counts := map[string]int{}
+	for _, asset := range detail.Assets {
+		for _, service := range asset.WebServices {
+			for _, tech := range parseTechnologies(service.Technologies) {
+				counts[tech]++
+			}
+		}
+	}
+
+	result := make([]techCount, 0, len(counts))
+	for name, count := range counts {
+		result = append(result, techCount{Name: name, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count == result[j].Count {
+			return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
+		}
+		return result[i].Count > result[j].Count
+	})
+	return result
+}
+
+func parseTechnologies(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	var jsonTechs []string
+	if err := json.Unmarshal([]byte(raw), &jsonTechs); err == nil {
+		return cleanTechnologies(jsonTechs)
+	}
+
+	return cleanTechnologies(strings.Split(raw, ","))
+}
+
+func cleanTechnologies(values []string) []string {
+	var result []string
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 // ── Scan list ─────────────────────────────────────────────────────────────────
@@ -273,6 +384,10 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func parseScanID(r *http.Request) (int64, error) {
+	return strconv.ParseInt(r.PathValue("id"), 10, 64)
+}
+
+func parseTargetID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("id"), 10, 64)
 }
 

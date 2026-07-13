@@ -82,6 +82,12 @@ func (p *Pipeline) execute(ctx context.Context, scanID int64, targets Targets, e
 		}
 	}()
 
+	if err := p.store.LinkScanTargets(scanID, ScanTargetsFromTargets(targets)); err != nil {
+		status = models.ScanStatusFailed
+		emit("failed", err.Error())
+		return fmt.Errorf("link scan targets: %w", err)
+	}
+
 	// ── Discovery ─────────────────────────────────────────────────────────────
 	assets, err := p.discover(ctx, targets)
 	if ctx.Err() != nil {

@@ -114,12 +114,12 @@
       <div class="form-grid" style="margin-top:10px" id="nmap-opts">
         <div class="field">
           <label>nmap arguments</label>
-          <input type="text" name="nmap_args" value="-sV --open -T4">
+          <input type="text" name="nmap_args" value="--open">
           <span class="field-hint">appended after target IP</span>
         </div>
         <div class="field">
           <label>parallel workers</label>
-          <input type="number" name="nmap_workers" value="10" min="1" max="50">
+          <input type="number" name="nmap_workers" value="" min="1" max="50">
         </div>
       </div>
 
@@ -134,11 +134,11 @@
       <div class="form-grid" style="margin-top:10px" id="httpx-opts">
         <div class="field">
           <label>ports to probe</label>
-          <input type="text" name="httpx_ports" value="80, 443, 8080, 8443, 8000, 8888">
+          <input type="text" name="httpx_ports" value="">
         </div>
         <div class="field">
           <label>threads</label>
-          <input type="number" name="httpx_threads" value="50" min="1" max="200">
+          <input type="number" name="httpx_threads" value="" min="1" max="200">
         </div>
       </div>
 
