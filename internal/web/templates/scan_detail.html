@@ -1,13 +1,6 @@
 {{template "base" .}}
 
 {{define "title"}}ReconKit — Scan #{{.Scan.ID}}{{end}}
-{{define "nav_scans"}}active{{end}}
-
-{{define "nav_extra"}}
-{{if .IsRunning}}
-<div class="nav-badge"><span class="pulse"></span>scan #{{.Scan.ID}} running</div>
-{{end}}
-{{end}}
 
 {{define "content"}}
 <div class="page-header">
@@ -22,7 +15,7 @@
     {{if .IsRunning}}
     <button class="btn btn-danger btn-sm" onclick="cancelScan()">cancel scan</button>
     {{else}}
-    <a href="/reports/html/scan_{{.Scan.ID}}/index.html" class="btn btn-ghost btn-sm" target="_blank">view report ↗</a>
+    <a href="/report-files/html/scan_{{.Scan.ID}}/index.html" class="btn btn-ghost btn-sm" target="_blank">view report ↗</a>
     {{end}}
     <a href="/scans" class="btn btn-ghost btn-sm">← back</a>
   </div>

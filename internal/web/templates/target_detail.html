@@ -12,6 +12,11 @@
   </span>
   {{end}}
   <div class="ml-auto" style="display:flex;gap:8px">
+    {{if .Detail.Scan}}
+    <form method="POST" action="/targets/{{.Detail.Target.ID}}/reports">
+      <button type="submit" class="btn btn-primary btn-sm">generate report</button>
+    </form>
+    {{end}}
     {{if .Detail.Scan}}<a href="/scans/{{.Detail.Scan.ID}}" class="btn btn-ghost btn-sm">scan #{{.Detail.Scan.ID}}</a>{{end}}
     <a href="/targets" class="btn btn-ghost btn-sm">back</a>
   </div>

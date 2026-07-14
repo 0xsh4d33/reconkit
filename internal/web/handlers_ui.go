@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/blackfly/reconkit/internal/models"
+	"github.com/blackfly/reconkit/internal/reporters"
 	"github.com/blackfly/reconkit/internal/repository"
 )
 
@@ -71,6 +74,115 @@ func (s *Server) handleTargetDetail(w http.ResponseWriter, r *http.Request) {
 		Detail:     detail,
 		TechCounts: buildTargetTechCounts(detail),
 	})
+}
+
+func (s *Server) handleGenerateTargetReport(w http.ResponseWriter, r *http.Request) {
+	targetID, err := parseTargetID(r)
+	if err != nil {
+		http.Error(w, "invalid target ID", http.StatusBadRequest)
+		return
+	}
+
+	detail, err := s.store.GetTargetDetail(targetID)
+	if err != nil {
+		log.Printf("[web] get target detail for report: %v", err)
+		http.Error(w, "target not found", http.StatusNotFound)
+		return
+	}
+	if detail.Scan == nil {
+		http.Error(w, "target has no scan to report", http.StatusBadRequest)
+		return
+	}
+
+	reporter := reporters.NewTargetHTMLReporter(s.store, s.cfg.Paths.Reports)
+	filePath, err := reporter.Generate(targetID)
+	if err != nil {
+		log.Printf("[web] generate target report: %v", err)
+		http.Error(w, "failed to generate report", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := s.store.CreateReportRecord("target", targetID, detail.Scan.ID, detail.Target.Value, filePath); err != nil {
+		log.Printf("[web] store report record: %v", err)
+		http.Error(w, "failed to store report record", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/reports", http.StatusSeeOther)
+}
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+type reportsPageData struct {
+	pageBase
+	Reports []repository.ReportRecord
+}
+
+func (s *Server) handleListReports(w http.ResponseWriter, r *http.Request) {
+	reports, err := s.store.ListReportRecords()
+	if err != nil {
+		log.Printf("[web] list reports: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.renderTemplate(w, "reports", reportsPageData{
+		pageBase: s.baseFor("reports"),
+		Reports:  reports,
+	})
+}
+
+func (s *Server) handleDeleteReport(w http.ResponseWriter, r *http.Request) {
+	reportID, err := parseReportID(r)
+	if err != nil {
+		http.Error(w, "invalid report ID", http.StatusBadRequest)
+		return
+	}
+
+	report, err := s.store.GetReportRecord(reportID)
+	if err != nil {
+		http.Error(w, "report not found", http.StatusNotFound)
+		return
+	}
+
+	if err := deleteReportFile(s.cfg.Paths.Reports, report.FilePath); err != nil {
+		log.Printf("[web] delete report file: %v", err)
+		http.Error(w, "failed to delete report file", http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.DeleteReportRecord(reportID); err != nil {
+		log.Printf("[web] delete report record: %v", err)
+		http.Error(w, "failed to delete report record", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/reports", http.StatusSeeOther)
+}
+
+func deleteReportFile(baseDir, relPath string) error {
+	if relPath == "" {
+		return nil
+	}
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return err
+	}
+	pathAbs, err := filepath.Abs(filepath.Join(baseDir, relPath))
+	if err != nil {
+		return err
+	}
+	if pathAbs != baseAbs && !strings.HasPrefix(pathAbs, baseAbs+string(os.PathSeparator)) {
+		return os.ErrPermission
+	}
+
+	if filepath.Base(pathAbs) == "index.html" {
+		return os.RemoveAll(filepath.Dir(pathAbs))
+	}
+	err = os.Remove(pathAbs)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func buildTargetTechCounts(detail *repository.TargetDetail) []techCount {
@@ -167,7 +279,6 @@ func (s *Server) handleSubmitScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nmapWorkers, _ := strconv.Atoi(r.FormValue("nmap_workers"))
 	httpxThreads, _ := strconv.Atoi(r.FormValue("httpx_threads"))
 
 	req := parseScanRequest(
@@ -176,7 +287,6 @@ func (s *Server) handleSubmitScan(w http.ResponseWriter, r *http.Request) {
 		r.FormValue("subdomains"),
 		r.FormValue("cidrs"),
 		r.FormValue("nmap_args"),
-		nmapWorkers,
 		httpxThreads,
 		r.FormValue("httpx_ports"),
 		r.FormValue("enable_nmap") == "on",
@@ -212,7 +322,6 @@ type scanDetailData struct {
 
 type scanConfigDefaults struct {
 	NmapArgs     string
-	NmapWorkers  int
 	HTTPxThreads int
 	HTTPxPorts   string
 }
@@ -257,7 +366,6 @@ func (s *Server) handleScanDetail(w http.ResponseWriter, r *http.Request) {
 		IsRunning:  s.scanManager.IsRunning(scanID),
 		Config: scanConfigDefaults{
 			NmapArgs:     joinStrings(s.cfg.Nmap.Arguments),
-			NmapWorkers:  s.cfg.Workers.Nmap,
 			HTTPxThreads: s.cfg.HTTPx.Threads,
 			HTTPxPorts:   joinInts(s.cfg.HTTPx.Ports),
 		},
@@ -388,6 +496,10 @@ func parseScanID(r *http.Request) (int64, error) {
 }
 
 func parseTargetID(r *http.Request) (int64, error) {
+	return strconv.ParseInt(r.PathValue("id"), 10, 64)
+}
+
+func parseReportID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("id"), 10, 64)
 }
 

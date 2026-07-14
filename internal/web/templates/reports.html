@@ -1,0 +1,65 @@
+{{template "base" .}}
+
+{{define "title"}}ReconKit - Reports{{end}}
+
+{{define "content"}}
+<div class="page-header">
+  <span class="page-title">reports</span>
+  <span class="page-sub">{{len .Reports}} generated</span>
+</div>
+
+{{if .Reports}}
+<div class="card">
+  <div class="card-body" style="padding-bottom:0">
+    <div class="toolbar">
+      <input type="text" id="report-filter" placeholder="filter reports..." oninput="filterReports()">
+      <span class="count" id="report-count">{{len .Reports}} reports</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="reports-table">
+      <thead>
+        <tr>
+          <th>created</th>
+          <th>type</th>
+          <th>title</th>
+          <th>scan</th>
+          <th>actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Reports}}
+        <tr>
+          <td class="td-mono">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+          <td><span class="badge badge-type">{{.ReportType}}</span></td>
+          <td>{{.Title}}</td>
+          <td>{{if .ScanID}}<a href="/scans/{{.ScanID}}">#{{.ScanID}}</a>{{else}}-{{end}}</td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <a class="btn btn-ghost btn-sm" href="/report-files/{{.FilePath}}" target="_blank" rel="noopener">open</a>
+            <form method="POST" action="/reports/{{.ID}}/delete" onsubmit="return confirm('Delete this report?')">
+              <button class="btn btn-danger btn-sm" type="submit">delete</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<div class="empty">no reports generated yet</div>
+{{end}}
+
+<script>
+function filterReports() {
+  const q = document.getElementById('report-filter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#reports-table tbody tr').forEach(row => {
+    const show = row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('report-count').textContent = visible + ' reports';
+}
+</script>
+{{end}}

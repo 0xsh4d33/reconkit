@@ -22,7 +22,6 @@ import (
 type ScanRequest struct {
 	Targets      services.Targets
 	NmapArgs     string // space-separated, overrides config if non-empty
-	NmapWorkers  int    // overrides config if > 0
 	HTTPxThreads int    // overrides config if > 0
 	HTTPxPorts   string // comma-separated ints, overrides config if non-empty
 	EnableNmap   bool
@@ -227,10 +226,6 @@ func (sm *ScanManager) applyOverrides(req ScanRequest) *config.Config {
 	if req.NmapArgs != "" {
 		c.Nmap = config.NmapConfig{Arguments: strings.Fields(req.NmapArgs)}
 	}
-	if req.NmapWorkers > 0 {
-		c.Workers = sm.cfg.Workers // copy workers struct
-		c.Workers.Nmap = req.NmapWorkers
-	}
 	if req.HTTPxThreads > 0 {
 		c.HTTPx.Threads = req.HTTPxThreads
 	}
@@ -255,7 +250,7 @@ func parseIntCSV(s string) []int {
 // parseScanRequest extracts and validates a ScanRequest from HTTP form values.
 func parseScanRequest(
 	profile, domains, subdomains, cidrs string,
-	nmapArgs string, nmapWorkers int,
+	nmapArgs string,
 	httpxThreads int, httpxPorts string,
 	enableNmap, enableHTTPx bool,
 ) ScanRequest {
@@ -269,7 +264,6 @@ func parseScanRequest(
 	return ScanRequest{
 		Targets:      targets,
 		NmapArgs:     nmapArgs,
-		NmapWorkers:  nmapWorkers,
 		HTTPxThreads: httpxThreads,
 		HTTPxPorts:   httpxPorts,
 		EnableNmap:   enableNmap,

@@ -86,7 +86,7 @@ func lookupAddrWithDig(ctx context.Context, ip string, timeout time.Duration) ([
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(digCtx, digPath, "-x", ip, "+short", "+time=1", "+tries=1") // #nosec G204 -- direct exec of dig with IP argument, no shell
+	cmd := exec.CommandContext(digCtx, digPath, "-x", ip, "+short", "+time=5", "+tries=1") // #nosec G204 -- direct exec of dig with IP argument, no shell
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

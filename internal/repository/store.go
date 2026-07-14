@@ -2,8 +2,13 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/blackfly/reconkit/internal/database"
@@ -99,6 +104,106 @@ func scanRow(r scanner) (*models.Scan, error) {
 		sc.FinishedAt = &finishedAt.Time
 	}
 	return &sc, nil
+}
+
+// ── Generated Reports ───────────────────────────────────────────────────────
+
+type ReportRecord struct {
+	ID         int64
+	ReportType string
+	TargetID   int64
+	ScanID     int64
+	Title      string
+	FilePath   string
+	CreatedAt  time.Time
+}
+
+func (s *Store) CreateReportRecord(reportType string, targetID, scanID int64, title, filePath string) (*ReportRecord, error) {
+	now := time.Now().UTC()
+	var targetValue any
+	if targetID != 0 {
+		targetValue = targetID
+	}
+	var scanValue any
+	if scanID != 0 {
+		scanValue = scanID
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO reports (report_type, target_id, scan_id, title, file_path, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		reportType, targetValue, scanValue, title, filePath, now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return &ReportRecord{
+		ID:         id,
+		ReportType: reportType,
+		TargetID:   targetID,
+		ScanID:     scanID,
+		Title:      title,
+		FilePath:   filePath,
+		CreatedAt:  now,
+	}, nil
+}
+
+func (s *Store) ListReportRecords() ([]ReportRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT id, report_type, COALESCE(target_id, 0), COALESCE(scan_id, 0), title, file_path, created_at
+		 FROM reports ORDER BY created_at DESC, id DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reports []ReportRecord
+	for rows.Next() {
+		var report ReportRecord
+		if err := rows.Scan(
+			&report.ID,
+			&report.ReportType,
+			&report.TargetID,
+			&report.ScanID,
+			&report.Title,
+			&report.FilePath,
+			&report.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		reports = append(reports, report)
+	}
+	return reports, rows.Err()
+}
+
+func (s *Store) GetReportRecord(id int64) (*ReportRecord, error) {
+	row := s.db.QueryRow(
+		`SELECT id, report_type, COALESCE(target_id, 0), COALESCE(scan_id, 0), title, file_path, created_at
+		 FROM reports WHERE id=?`,
+		id,
+	)
+	var report ReportRecord
+	if err := row.Scan(
+		&report.ID,
+		&report.ReportType,
+		&report.TargetID,
+		&report.ScanID,
+		&report.Title,
+		&report.FilePath,
+		&report.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+func (s *Store) DeleteReportRecord(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM reports WHERE id=?`, id)
+	return err
 }
 
 // ── Scan Targets ─────────────────────────────────────────────────────────────
@@ -201,6 +306,25 @@ type TargetDetail struct {
 	Target models.ScanTarget
 	Scan   *models.Scan
 	Assets []TargetAssetDetail
+}
+
+type TargetServiceReport struct {
+	Target           models.ScanTarget
+	Scan             *models.Scan
+	AssetCount       int
+	ResolvedDNSCount int
+	OpenPortCount    int
+	WebServiceCount  int
+	Rows             []TargetServiceReportRow
+}
+
+type TargetServiceReportRow struct {
+	DNS              string
+	IP               string
+	Port             int
+	ServerTechnology string
+	Version          string
+	LastScan         time.Time
 }
 
 func (s *Store) ListTargetSummaries() ([]TargetSummary, error) {
@@ -335,6 +459,207 @@ func (s *Store) GetTargetDetail(targetID int64) (*TargetDetail, error) {
 	}
 
 	return detail, nil
+}
+
+func (s *Store) GetTargetServiceReport(targetID int64) (*TargetServiceReport, error) {
+	detail, err := s.GetTargetDetail(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	report := &TargetServiceReport{
+		Target: detail.Target,
+		Scan:   detail.Scan,
+	}
+	if detail.Scan == nil {
+		return report, nil
+	}
+
+	lastScan := detail.Scan.StartedAt
+	if detail.Scan.FinishedAt != nil {
+		lastScan = *detail.Scan.FinishedAt
+	}
+
+	for _, assetDetail := range detail.Assets {
+		asset := assetDetail.Asset
+		report.AssetCount++
+		if asset.Hostname != "" {
+			report.ResolvedDNSCount++
+		}
+		report.OpenPortCount += len(assetDetail.Ports)
+		report.WebServiceCount += len(assetDetail.WebServices)
+
+		portsByNumber := map[int]models.Port{}
+		for _, port := range assetDetail.Ports {
+			portsByNumber[port.Port] = port
+		}
+
+		for _, service := range assetDetail.WebServices {
+			portNumber := webServicePort(service)
+			port := portsByNumber[portNumber]
+			report.Rows = append(report.Rows, targetServiceRows(asset, service, port, portNumber, lastScan)...)
+		}
+	}
+
+	sort.Slice(report.Rows, func(i, j int) bool {
+		if report.Rows[i].IP != report.Rows[j].IP {
+			return ipLess(report.Rows[i].IP, report.Rows[j].IP)
+		}
+		if report.Rows[i].Port != report.Rows[j].Port {
+			return report.Rows[i].Port < report.Rows[j].Port
+		}
+		return report.Rows[i].ServerTechnology < report.Rows[j].ServerTechnology
+	})
+
+	return report, nil
+}
+
+func assetIP(asset models.Asset) string {
+	if asset.IP != "" {
+		return asset.IP
+	}
+	return asset.Name
+}
+
+func displayValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+func webServicePort(service models.WebService) int {
+	if parsed, err := url.Parse(service.URL); err == nil {
+		if parsed.Port() != "" {
+			if port, err := strconv.Atoi(parsed.Port()); err == nil {
+				return port
+			}
+		}
+		switch parsed.Scheme {
+		case "https":
+			return 443
+		case "http":
+			return 80
+		}
+	}
+	return 0
+}
+
+func targetServiceRows(asset models.Asset, service models.WebService, port models.Port, portNumber int, lastScan time.Time) []TargetServiceReportRow {
+	techs := parseStoredTechnologies(service.Technologies)
+	var rows []TargetServiceReportRow
+	for _, tech := range techs {
+		name, techVersion := splitTechnologyVersion(tech)
+		if name == "" {
+			continue
+		}
+		rows = append(rows, TargetServiceReportRow{
+			DNS:              displayValue(asset.Hostname),
+			IP:               assetIP(asset),
+			Port:             portNumber,
+			ServerTechnology: name,
+			Version:          displayValue(techVersion),
+			LastScan:         lastScan,
+		})
+	}
+	if len(rows) > 0 {
+		return dedupTargetServiceRows(rows)
+	}
+
+	name := "-"
+	version := "-"
+	switch {
+	case port.Product != "":
+		name = port.Product
+		version = displayValue(port.Version)
+	case port.Service != "":
+		name = port.Service
+		version = displayValue(port.Version)
+	case service.Title != "":
+		name = service.Title
+	}
+	return []TargetServiceReportRow{{
+		DNS:              displayValue(asset.Hostname),
+		IP:               assetIP(asset),
+		Port:             portNumber,
+		ServerTechnology: name,
+		Version:          version,
+		LastScan:         lastScan,
+	}}
+}
+
+func parseStoredTechnologies(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var jsonTechs []string
+	if err := json.Unmarshal([]byte(raw), &jsonTechs); err == nil {
+		return jsonTechs
+	}
+	return strings.Split(raw, ",")
+}
+
+func dedupTargetServiceRows(rows []TargetServiceReportRow) []TargetServiceReportRow {
+	var result []TargetServiceReportRow
+	seen := map[string]bool{}
+	for _, row := range rows {
+		key := row.DNS + "|" + row.IP + "|" + strconv.Itoa(row.Port) + "|" + row.ServerTechnology + "|" + row.Version
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, row)
+	}
+	return result
+}
+
+func splitTechnologyVersion(tech string) (string, string) {
+	tech = strings.TrimSpace(tech)
+	if tech == "" {
+		return "", ""
+	}
+	for _, sep := range []string{":", "/"} {
+		if idx := strings.LastIndex(tech, sep); idx > 0 && idx < len(tech)-1 {
+			return strings.TrimSpace(tech[:idx]), strings.TrimSpace(tech[idx+1:])
+		}
+	}
+	return tech, ""
+}
+
+func dedupNonEmpty(values []string) []string {
+	var result []string
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
+func ipLess(a, b string) bool {
+	ipa := net.ParseIP(a)
+	ipb := net.ParseIP(b)
+	if ipa == nil || ipb == nil {
+		return a < b
+	}
+	return bytesCompare(ipa.To16(), ipb.To16()) < 0
+}
+
+func bytesCompare(a, b []byte) int {
+	for i := range a {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
 }
 
 func (s *Store) getScanTarget(targetID int64) (*models.ScanTarget, error) {
@@ -480,19 +805,6 @@ func (s *Store) GetHTTPxTargetsByScan(scanID int64) ([]models.Asset, error) {
 	return scanAssets(rows)
 }
 
-func (s *Store) GetHostAssetsByScan(scanID int64) ([]models.Asset, error) {
-	rows, err := s.db.Query(
-		`SELECT id, scan_id, asset_type, name, hostname, ip, first_seen, last_seen
-		 FROM assets WHERE scan_id=? AND asset_type != ? ORDER BY name`,
-		scanID, models.AssetTypeIP,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanAssets(rows)
-}
-
 func scanAssets(rows *sql.Rows) ([]models.Asset, error) {
 	var assets []models.Asset
 	for rows.Next() {
@@ -601,23 +913,6 @@ func (s *Store) GetWebServicesByAsset(assetID int64) ([]models.WebService, error
 		 GROUP BY asset_id, url
 		 ORDER BY url`,
 		assetID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanWebServices(rows)
-}
-
-func (s *Store) GetWebServicesByScan(scanID int64) ([]models.WebService, error) {
-	rows, err := s.db.Query(
-		`SELECT MIN(ws.id), ws.asset_id, ws.url, ws.title, ws.status_code, ws.scheme, ws.technologies, ws.favicon_hash
-		 FROM web_services ws
-		 JOIN assets a ON a.id = ws.asset_id
-		 WHERE a.scan_id=?
-		 GROUP BY ws.asset_id, ws.url
-		 ORDER BY ws.url`,
-		scanID,
 	)
 	if err != nil {
 		return nil, err
@@ -813,5 +1108,86 @@ func (s *Store) Diff(scanID1, scanID2 int64) (*DiffResult, error) {
 		return nil, err
 	}
 
+	rows, err = s.db.Query(
+		`SELECT a.id, a.scan_id, a.asset_type, a.name, a.hostname, a.ip, a.first_seen, a.last_seen,
+		        p.id, p.asset_id, p.port, p.protocol, p.state, p.service, p.product, p.version
+		 FROM ports p
+		 JOIN assets a ON a.id = p.asset_id
+		 WHERE a.scan_id = ?
+		   AND NOT EXISTS (
+		     SELECT 1
+		     FROM ports p1
+		     JOIN assets a1 ON a1.id = p1.asset_id
+		     WHERE a1.scan_id = ?
+		       AND a1.name = a.name
+		       AND p1.port = p.port
+		       AND p1.protocol = p.protocol
+		   )
+		 ORDER BY a.name, p.port, p.protocol`,
+		scanID2, scanID1,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("new ports: %w", err)
+	}
+	diff.NewPorts, err = scanPortDiffs(rows)
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err = s.db.Query(
+		`SELECT MIN(ws.id), ws.asset_id, ws.url, ws.title, ws.status_code, ws.scheme, ws.technologies, ws.favicon_hash
+		 FROM web_services ws
+		 JOIN assets a ON a.id = ws.asset_id
+		 WHERE a.scan_id = ?
+		   AND NOT EXISTS (
+		     SELECT 1
+		     FROM web_services ws1
+		     JOIN assets a1 ON a1.id = ws1.asset_id
+		     WHERE a1.scan_id = ?
+		       AND ws1.url = ws.url
+		   )
+		 GROUP BY ws.asset_id, ws.url
+		 ORDER BY ws.url`,
+		scanID2, scanID1,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("new web services: %w", err)
+	}
+	diff.NewServices, err = scanWebServices(rows)
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	return diff, nil
+}
+
+func scanPortDiffs(rows *sql.Rows) ([]PortDiff, error) {
+	var ports []PortDiff
+	for rows.Next() {
+		var diff PortDiff
+		if err := rows.Scan(
+			&diff.Asset.ID,
+			&diff.Asset.ScanID,
+			&diff.Asset.AssetType,
+			&diff.Asset.Name,
+			&diff.Asset.Hostname,
+			&diff.Asset.IP,
+			&diff.Asset.FirstSeen,
+			&diff.Asset.LastSeen,
+			&diff.Port.ID,
+			&diff.Port.AssetID,
+			&diff.Port.Port,
+			&diff.Port.Protocol,
+			&diff.Port.State,
+			&diff.Port.Service,
+			&diff.Port.Product,
+			&diff.Port.Version,
+		); err != nil {
+			return nil, err
+		}
+		ports = append(ports, diff)
+	}
+	return ports, rows.Err()
 }

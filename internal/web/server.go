@@ -52,6 +52,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /{$}", s.handleRedirect)
 	mux.HandleFunc("GET /targets", s.handleListTargets)
 	mux.HandleFunc("GET /targets/{id}", s.handleTargetDetail)
+	mux.HandleFunc("POST /targets/{id}/reports", s.handleGenerateTargetReport)
+	mux.HandleFunc("GET /reports", s.handleListReports)
+	mux.HandleFunc("POST /reports/{id}/delete", s.handleDeleteReport)
 	mux.HandleFunc("GET /scans", s.handleListScans)
 	mux.HandleFunc("POST /scans", s.handleSubmitScan)
 	mux.HandleFunc("GET /scans/{id}", s.handleScanDetail)
@@ -65,7 +68,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/scans/{id}/cancel", s.handleCancelScan)
 
 	// Static
-	mux.Handle("GET /reports/", http.StripPrefix("/reports/",
+	mux.Handle("GET /report-files/", http.StripPrefix("/report-files/",
 		http.FileServer(http.Dir(s.cfg.Paths.Reports))))
 	mux.Handle("GET /screenshots/", http.StripPrefix("/screenshots/",
 		http.FileServer(http.Dir(s.cfg.Paths.Screenshots))))
@@ -94,7 +97,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 // pageBase holds fields required by base.html for every page.
 type pageBase struct {
-	Nav      string // active nav item: "targets" | "scans" | "diff"
+	Nav      string // active nav item: "targets" | "reports" | "scans" | "diff"
 	NavBadge string // optional right-side badge text (e.g. "2 running")
 }
 
@@ -237,9 +240,5 @@ func templateFuncs() template.FuncMap {
 		},
 
 		"lower": strings.ToLower,
-
-		"safeHTML": func(s string) template.HTML {
-			return template.HTML(s) // #nosec G203 — only used for trusted internal strings
-		},
 	}
 }

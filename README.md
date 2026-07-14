@@ -129,7 +129,6 @@ database:
 
 workers:
   discovery: 20
-  nmap: 10
 
 nmap:
   arguments: ["-sV", "--open", "-T4"]

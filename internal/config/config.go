@@ -28,7 +28,6 @@ type DatabaseConfig struct {
 
 type WorkersConfig struct {
 	Discovery int `yaml:"discovery"`
-	Nmap      int `yaml:"nmap"`
 }
 
 type NmapConfig struct {
@@ -71,9 +70,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Workers.Discovery == 0 {
 		c.Workers.Discovery = 20
-	}
-	if c.Workers.Nmap == 0 {
-		c.Workers.Nmap = 10
 	}
 	if c.Paths.ScanResults == "" {
 		c.Paths.ScanResults = "./scan_results"

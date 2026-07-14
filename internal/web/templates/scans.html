@@ -1,7 +1,6 @@
 {{template "base" .}}
 
 {{define "title"}}ReconKit — Scans{{end}}
-{{define "nav_scans"}}active{{end}}
 
 {{define "content"}}
 <div class="page-header">
@@ -116,10 +115,6 @@
           <label>nmap arguments</label>
           <input type="text" name="nmap_args" value="--open">
           <span class="field-hint">appended after target IP</span>
-        </div>
-        <div class="field">
-          <label>parallel workers</label>
-          <input type="number" name="nmap_workers" value="" min="1" max="50">
         </div>
       </div>
 
