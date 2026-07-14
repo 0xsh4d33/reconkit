@@ -14,7 +14,7 @@ services:
       - NET_ADMIN
     user: root
     restart: unless-stopped
-    dns: 
+    dns:
       - ${AD_DNS_IP}
     dns_search:
       - ${AD_DNS_SEARCH}
